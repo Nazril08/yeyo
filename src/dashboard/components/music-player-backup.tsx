@@ -8,7 +8,6 @@ import { useToast } from '@/components/ui/use-toast'
 import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward, Upload, ArrowLeft, Music } from 'lucide-react'
 import { useDirectoryBrowser, MediaFile } from '@/hooks/use-directory-browser'
 import { FileList } from '@/components/file-list'
-import { useMediaDirectoryStore } from '@/stores/media-directory-provider'
 
 interface MusicPlayerProps {
   onBack: () => void
@@ -28,9 +27,6 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
-  // Global directory store
-  const { selectedDirectory: globalDirectory, setSelectedDirectory: setGlobalDirectory } = useMediaDirectoryStore()
-
   // Audio file extensions
   const audioExtensions = ['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'wma', 'opus', 'webm']
   
@@ -38,30 +34,16 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
     selectedDirectory,
     files,
     isLoading,
+    isAutoRefreshEnabled,
     lastRefresh,
-    selectDirectory: selectDirectoryHook,
+    selectDirectory,
     refreshFiles,
     getFileUrl,
-    setSelectedDirectory
+    setIsAutoRefreshEnabled
   } = useDirectoryBrowser({
     fileTypes: audioExtensions,
-    initialDirectory: globalDirectory
+    autoRefreshInterval: 5000
   })
-
-  // Custom selectDirectory that updates global store
-  const selectDirectory = async () => {
-    const newDirectory = await selectDirectoryHook()
-    if (newDirectory) {
-      setGlobalDirectory(newDirectory)
-    }
-  }
-
-  // Sync global directory changes with local hook
-  useEffect(() => {
-    if (globalDirectory && globalDirectory !== selectedDirectory) {
-      setSelectedDirectory(globalDirectory)
-    }
-  }, [globalDirectory, selectedDirectory, setSelectedDirectory])
 
   // Filter only audio files
   const audioFiles = files.filter(file => file.type === 'audio')
@@ -69,11 +51,11 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
   // Cleanup URL when component unmounts or file changes
   useEffect(() => {
     return () => {
-      if (fileURL && currentFile && !currentFile.path) {
+      if (fileURL) {
         URL.revokeObjectURL(fileURL)
       }
     }
-  }, [fileURL, currentFile])
+  }, [fileURL])
 
   // Initialize audio when file is loaded
   useEffect(() => {
@@ -151,6 +133,38 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
       }
     }
   }
+        if (fileURL) {
+          URL.revokeObjectURL(fileURL)
+        }
+        
+        const newURL = URL.createObjectURL(file)
+        // Convert File to MediaFile format for consistency
+        const mediaFile: MediaFile = {
+          name: file.name,
+          path: '',
+          size: file.size,
+          modified: Date.now() / 1000,
+          type: 'audio'
+        }
+        setCurrentFile(mediaFile)
+        setFileURL(newURL)
+        setIsPlaying(false)
+        setCurrentTime(0)
+        setDuration(0)
+        
+        toast({
+          title: "Audio loaded",
+          description: `${file.name} loaded successfully`,
+        })
+      } else {
+        toast({
+          title: "Invalid file type",
+          description: "Please select an audio file",
+          variant: "destructive",
+        })
+      }
+    }
+  }
 
   const togglePlayPause = async () => {
     if (!audioRef.current || !currentFile) return
@@ -188,19 +202,18 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
 
   const handleSeek = (value: number[]) => {
     if (audioRef.current && duration > 0) {
-      const seekTime = (value[0] / 100) * duration
-      audioRef.current.currentTime = seekTime
-      setCurrentTime(seekTime)
+      const newTime = (value[0] / 100) * duration
+      audioRef.current.currentTime = newTime
+      setCurrentTime(newTime)
     }
   }
 
   const handleVolumeChange = (value: number[]) => {
-    setVolume(value)
     if (audioRef.current) {
-      audioRef.current.volume = value[0] / 100
-    }
-    if (value[0] > 0) {
-      setIsMuted(false)
+      const newVolume = value[0] / 100
+      audioRef.current.volume = newVolume
+      setVolume(value)
+      setIsMuted(newVolume === 0)
     }
   }
 
@@ -252,11 +265,13 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
             selectedDirectory={selectedDirectory}
             files={audioFiles}
             isLoading={isLoading}
+            isAutoRefreshEnabled={isAutoRefreshEnabled}
             lastRefresh={lastRefresh}
             currentFile={currentFile}
             onSelectDirectory={selectDirectory}
             onRefresh={refreshFiles}
             onFileSelect={handleDirectoryFileSelect}
+            onToggleAutoRefresh={setIsAutoRefreshEnabled}
           />
         </div>
 
@@ -296,6 +311,14 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
               {/* Audio Display */}
               {currentFile && (
                 <div className="space-y-4">
+                  <div className="w-full h-48 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
+                    <div className="text-center text-white">
+                      <div className="text-6xl mb-4">🎵</div>
+                      <p className="text-lg font-medium">{currentFile.name}</p>
+                      <p className="text-sm opacity-75">Audio File</p>
+                    </div>
+                  </div>
+
                   <audio
                     ref={audioRef}
                     src={fileURL || undefined}
@@ -306,31 +329,15 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
                     onPause={() => setIsPlaying(false)}
                     onError={(e) => {
                       console.error('Audio error:', e)
-                      console.error('Current file URL:', fileURL)
-                      console.error('Current file path:', currentFile?.path)
                       toast({
                         title: "Audio Error",
-                        description: `Failed to load audio file. Check console for details.`,
+                        description: "Failed to load audio file",
                         variant: "destructive",
                       })
                     }}
-                    onLoadStart={() => {
-                      console.log('Audio load started for:', fileURL)
-                    }}
-                    onCanPlay={() => {
-                      console.log('Audio can play')
-                    }}
+                    className="hidden"
                     preload="metadata"
                   />
-
-                  {/* Audio Info */}
-                  <div className="text-center py-8">
-                    <div className="text-6xl mb-4">🎵</div>
-                    <h3 className="text-xl font-semibold">{currentFile.name}</h3>
-                    <p className="text-muted-foreground">
-                      {(currentFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
 
                   {/* Controls */}
                   <div className="space-y-4">

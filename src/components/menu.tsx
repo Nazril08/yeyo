@@ -2,17 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react"
 import logo from "@/assets/logo.png"
-import { Globe, Mic, Sailboat, Settings } from "lucide-react"
+import { Sailboat, Settings } from "lucide-react"
 
 import {
   Menubar,
-  MenubarCheckboxItem,
   MenubarContent,
   MenubarItem,
-  MenubarLabel,
   MenubarMenu,
-  MenubarRadioGroup,
-  MenubarRadioItem,
   MenubarSeparator,
   MenubarShortcut,
   MenubarSub,
@@ -22,7 +18,6 @@ import {
 } from "@/components/ui/menubar"
 
 import { AboutDialog } from "./about-dialog"
-import { MenuModeToggle } from "./menu-mode-toggle"
 import { SettingsDialog } from "./settings-dialog"
 import { Dialog, DialogTrigger } from "./ui/dialog"
 
@@ -130,47 +125,7 @@ export function Menu() {
             </MenubarItem>
           </MenubarContent>
         </MenubarMenu>
-        <MenubarMenu>
-          <MenubarTrigger>Edit</MenubarTrigger>
-          <MenubarContent>
-            <MenubarItem disabled>
-              Undo <MenubarShortcut>⌘Z</MenubarShortcut>
-            </MenubarItem>
-            <MenubarItem disabled>
-              Redo <MenubarShortcut>⇧⌘Z</MenubarShortcut>
-            </MenubarItem>
-            <MenubarSeparator />
-            <MenubarItem disabled>
-              Cut <MenubarShortcut>⌘X</MenubarShortcut>
-            </MenubarItem>
-            <MenubarItem disabled>
-              Copy <MenubarShortcut>⌘C</MenubarShortcut>
-            </MenubarItem>
-            <MenubarItem disabled>
-              Paste <MenubarShortcut>⌘V</MenubarShortcut>
-            </MenubarItem>
-            <MenubarSeparator />
-            <MenubarItem>
-              Select All <MenubarShortcut>⌘A</MenubarShortcut>
-            </MenubarItem>
-            <MenubarItem disabled>
-              Deselect All <MenubarShortcut>⇧⌘A</MenubarShortcut>
-            </MenubarItem>
-            <MenubarSeparator />
-            <MenubarItem>
-              Smart Dictation...{" "}
-              <MenubarShortcut>
-                <Mic className="h-4 w-4" />
-              </MenubarShortcut>
-            </MenubarItem>
-            <MenubarItem>
-              Emoji & Symbols{" "}
-              <MenubarShortcut>
-                <Globe className="h-4 w-4" />
-              </MenubarShortcut>
-            </MenubarItem>
-          </MenubarContent>
-        </MenubarMenu>
+
         <MenubarMenu>
           <MenubarTrigger>Settings</MenubarTrigger>
           <MenubarContent>
@@ -187,40 +142,7 @@ export function Menu() {
             </MenubarItem>
           </MenubarContent>
         </MenubarMenu>
-        <MenubarMenu>
-          <MenubarTrigger>View</MenubarTrigger>
-          <MenubarContent>
-            <MenubarCheckboxItem>Show Playing Next</MenubarCheckboxItem>
-            <MenubarCheckboxItem checked>Show Lyrics</MenubarCheckboxItem>
-            <MenubarSeparator />
-            <MenubarItem inset disabled>
-              Show Status Bar
-            </MenubarItem>
-            <MenubarSeparator />
-            <MenubarItem inset>Hide Sidebar</MenubarItem>
-            <MenubarItem disabled inset>
-              Enter Full Screen
-            </MenubarItem>
-          </MenubarContent>
-        </MenubarMenu>
-        <MenubarMenu>
-          <MenubarTrigger>Account</MenubarTrigger>
-          <MenubarContent forceMount>
-            <MenubarLabel inset>Switch Account</MenubarLabel>
-            <MenubarSeparator />
-            <MenubarRadioGroup value="benoit">
-              <MenubarRadioItem value="andy">Andy</MenubarRadioItem>
-              <MenubarRadioItem value="benoit">Benoit</MenubarRadioItem>
-              <MenubarRadioItem value="Luis">Luis</MenubarRadioItem>
-            </MenubarRadioGroup>
-            <MenubarSeparator />
-            <MenubarItem inset>Manage Famliy...</MenubarItem>
-            <MenubarSeparator />
-            <MenubarItem inset>Add Account...</MenubarItem>
-          </MenubarContent>
-        </MenubarMenu>
 
-        <MenuModeToggle />
       </Menubar>
       
       <SettingsDialog 
