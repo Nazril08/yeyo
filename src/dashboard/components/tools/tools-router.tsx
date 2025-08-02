@@ -8,6 +8,7 @@ import YouTubeDownloader from '@/dashboard/components/youtube-downloader';
 import FacebookDownloader from '@/dashboard/components/facebook-downloader';
 import InstagramDownloader from '@/dashboard/components/instagram-downloader';
 import AnimagineXL from '@/dashboard/components/animagine-xl';
+import YoutubeSummarize from '@/dashboard/components/youtube-summarize';
 
 interface ToolsRouterProps {
   currentTool: string;
@@ -47,6 +48,10 @@ export function ToolsRouter({ currentTool, onBack }: ToolsRouterProps) {
     'animagine-xl': {
       component: <AnimagineXL />,
       title: 'Animagine XL - AI Image Generator'
+    },
+    'youtube-summarize': {
+      component: <YoutubeSummarize />,
+      title: 'YouTube Summarize - AI Video Summary'
     }
   };
 

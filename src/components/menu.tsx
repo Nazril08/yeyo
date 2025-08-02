@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import logo from "@/assets/logo.png"
-import { Globe, Mic, Sailboat } from "lucide-react"
+import { Globe, Mic, Sailboat, Settings } from "lucide-react"
 
 import {
   Menubar,
@@ -23,9 +23,12 @@ import {
 
 import { AboutDialog } from "./about-dialog"
 import { MenuModeToggle } from "./menu-mode-toggle"
+import { SettingsDialog } from "./settings-dialog"
 import { Dialog, DialogTrigger } from "./ui/dialog"
 
 export function Menu() {
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  
   const closeWindow = useCallback(async () => {
     const { appWindow } = await import("@tauri-apps/plugin-window")
 
@@ -169,6 +172,22 @@ export function Menu() {
           </MenubarContent>
         </MenubarMenu>
         <MenubarMenu>
+          <MenubarTrigger>Settings</MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onClick={() => setSettingsOpen(true)}>
+              <Settings className="h-4 w-4 mr-2" />
+              Preferences... <MenubarShortcut>⌘,</MenubarShortcut>
+            </MenubarItem>
+            <MenubarSeparator />
+            <MenubarItem onClick={() => setSettingsOpen(true)}>
+              API Configuration
+            </MenubarItem>
+            <MenubarItem onClick={() => setSettingsOpen(true)}>
+              General Settings
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+        <MenubarMenu>
           <MenubarTrigger>View</MenubarTrigger>
           <MenubarContent>
             <MenubarCheckboxItem>Show Playing Next</MenubarCheckboxItem>
@@ -203,6 +222,11 @@ export function Menu() {
 
         <MenuModeToggle />
       </Menubar>
+      
+      <SettingsDialog 
+        open={settingsOpen} 
+        onOpenChange={setSettingsOpen} 
+      />
     </div>
   )
 }

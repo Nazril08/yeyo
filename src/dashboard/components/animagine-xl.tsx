@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
+import { useGeminiApi } from '@/components/settings-dialog';
+import { Sparkles, Wand2 } from 'lucide-react';
 
 // API returns image directly, not JSON
 
@@ -25,8 +27,89 @@ export default function AnimagineXL() {
   const [upscaleBy, setUpscaleBy] = useState('1.5');
   const [addQualityTags, setAddQualityTags] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [isGeneratingNegative, setIsGeneratingNegative] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const { toast } = useToast();
+  const { isConfigured, generatePromptEnhancement, generateNegativePrompt } = useGeminiApi();
+
+  const handleEnhancePrompt = async () => {
+    if (!prompt.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a prompt first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isConfigured) {
+      toast({
+        title: "API Not Configured",
+        description: "Please configure your Gemini API key in Settings",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsEnhancing(true);
+    try {
+      const enhancedPrompt = await generatePromptEnhancement(prompt);
+      setPrompt(enhancedPrompt);
+      toast({
+        title: "Success",
+        description: "Prompt enhanced successfully!",
+      });
+    } catch (error) {
+      console.error('Error enhancing prompt:', error);
+      toast({
+        title: "Error",
+        description: "Failed to enhance prompt. Please check your API configuration.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEnhancing(false);
+    }
+  };
+
+  const handleGenerateNegativePrompt = async () => {
+    if (!prompt.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a main prompt first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isConfigured) {
+      toast({
+        title: "API Not Configured",
+        description: "Please configure your Gemini API key in Settings",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingNegative(true);
+    try {
+      const newNegativePrompt = await generateNegativePrompt(prompt);
+      setNegativePrompt(newNegativePrompt);
+      toast({
+        title: "Success",
+        description: "Negative prompt generated successfully!",
+      });
+    } catch (error) {
+      console.error('Error generating negative prompt:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate negative prompt. Please check your API configuration.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingNegative(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -61,7 +144,8 @@ export default function AnimagineXL() {
       const response = await fetch(`https://api.nzr.web.id/api/ai-image/animagine?${params}`, {
         method: 'GET',
         headers: {
-          'accept': 'image/png'
+          'accept': 'image/png',
+          'User-Agent': 'Yeyo-Desktop-App'
         }
       });
 
@@ -137,7 +221,25 @@ export default function AnimagineXL() {
         <CardContent className="space-y-4">
           {/* Prompt */}
           <div className="space-y-2">
-            <Label htmlFor="prompt">Prompt *</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="prompt">Prompt *</Label>
+              <Button
+                onClick={handleEnhancePrompt}
+                disabled={isEnhancing || !prompt.trim() || !isConfigured}
+                variant="outline"
+                size="sm"
+                className="h-7"
+              >
+                {isEnhancing ? (
+                  <>Enhancing...</>
+                ) : (
+                  <>
+                    <Sparkles className="w-3 h-3 mr-1" />
+                    Enhance
+                  </>
+                )}
+              </Button>
+            </div>
             <Textarea
               id="prompt"
               placeholder="mountain"
@@ -145,11 +247,34 @@ export default function AnimagineXL() {
               onChange={(e) => setPrompt(e.target.value)}
               className="min-h-[80px]"
             />
+            {!isConfigured && (
+              <p className="text-xs text-muted-foreground">
+                💡 Configure Gemini API in Settings to use AI enhancement features
+              </p>
+            )}
           </div>
 
           {/* Negative Prompt */}
           <div className="space-y-2">
-            <Label htmlFor="negative-prompt">Negative Prompt</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="negative-prompt">Negative Prompt</Label>
+              <Button
+                onClick={handleGenerateNegativePrompt}
+                disabled={isGeneratingNegative || !prompt.trim() || !isConfigured}
+                variant="outline"
+                size="sm"
+                className="h-7"
+              >
+                {isGeneratingNegative ? (
+                  <>Generating...</>
+                ) : (
+                  <>
+                    <Wand2 className="w-3 h-3 mr-1" />
+                    AI Generate
+                  </>
+                )}
+              </Button>
+            </div>
             <Textarea
               id="negative-prompt"
               placeholder="negative_prompt"
@@ -279,7 +404,7 @@ export default function AnimagineXL() {
               <Checkbox
                 id="use-upscaler"
                 checked={useUpscaler}
-                onCheckedChange={setUseUpscaler}
+                onCheckedChange={(checked) => setUseUpscaler(checked === true)}
               />
               <Label htmlFor="use-upscaler">Use Upscaler</Label>
             </div>
@@ -317,7 +442,7 @@ export default function AnimagineXL() {
             <Checkbox
               id="add-quality-tags"
               checked={addQualityTags}
-              onCheckedChange={setAddQualityTags}
+              onCheckedChange={(checked) => setAddQualityTags(checked === true)}
             />
             <Label htmlFor="add-quality-tags">Add Quality Tags</Label>
           </div>
