@@ -4,8 +4,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Download, Loader2, Play, Music, Video, Clock, Copy, ExternalLink, CheckCircle } from 'lucide-react';
+import { Download, Loader2, Play, Music, Video, Clock, Copy, ExternalLink, CheckCircle, Monitor, Eye } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface MediaFormat {
   formatId: number;
@@ -46,6 +47,9 @@ export default function YouTubeDownloader() {
   const [error, setError] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<string>('');
   const [notification, setNotification] = useState<{type: 'success' | 'error' | 'info', message: string} | null>(null);
+  const [selectedVideoFormat, setSelectedVideoFormat] = useState<MediaFormat | null>(null);
+  const [selectedAudioFormat, setSelectedAudioFormat] = useState<MediaFormat | null>(null);
+  const [activeTab, setActiveTab] = useState<'download' | 'preview'>('download');
 
   const handleFetch = async () => {
     if (!url.trim()) {
@@ -155,6 +159,39 @@ export default function YouTubeDownloader() {
     window.open(media.url, '_blank', 'noopener,noreferrer');
   };
 
+  const handleDownloadAndPreview = (media: MediaFormat) => {
+    // Set preview first
+    if (media.type === 'video') {
+      setSelectedVideoFormat(media);
+      setSelectedAudioFormat(null);
+    } else if (media.type === 'audio') {
+      setSelectedAudioFormat(media);
+      setSelectedVideoFormat(null);
+    }
+    
+    // Switch to preview tab and trigger download
+    setActiveTab('preview');
+    handleFileDownload(media);
+  };
+
+  const handlePreviewVideo = (media: MediaFormat) => {
+    setSelectedVideoFormat(media);
+    setSelectedAudioFormat(null);
+    setActiveTab('preview');
+  };
+
+  const handlePreviewAudio = (media: MediaFormat) => {
+    setSelectedAudioFormat(media);
+    setSelectedVideoFormat(null);
+    setActiveTab('preview');
+  };
+
+  const getYouTubeVideoId = (url: string) => {
+    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+  };
+
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
@@ -238,121 +275,245 @@ export default function YouTubeDownloader() {
               </CardContent>
             </Card>
 
-            {/* Video Formats */}
-            {getVideoFormats().length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Video className="h-4 w-4" />
-                    Video Formats
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-3">
-                    {getVideoFormats().map((media) => (
-                      <div key={media.formatId} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{media.quality}</Badge>
-                            <Badge variant="secondary">{media.ext.toUpperCase()}</Badge>
-                            {media.fps && <Badge variant="outline">{media.fps}fps</Badge>}
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            {media.width && media.height && `${media.width}x${media.height} • `}
-                            {media.bitrate && `${Math.round(media.bitrate / 1000)}kbps • `}
-                            {formatFileSize(media.bitrate || 0, data.duration)}
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            onClick={() => handleFileDownload(media)}
-                          >
-                            <Download className="h-4 w-4 mr-1" />
-                            Download
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleCopyUrl(media)}
-                            title="Copy URL (use Ctrl+J in browser to download)"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleOpenUrl(media)}
-                            title="Open in new tab"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {/* Tabs for Download and Preview */}
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'download' | 'preview')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="download" className="flex items-center gap-2">
+                  <Download className="h-4 w-4" />
+                  Download
+                </TabsTrigger>
+                <TabsTrigger value="preview" className="flex items-center gap-2">
+                  <Eye className="h-4 w-4" />
+                  Preview
+                </TabsTrigger>
+              </TabsList>
 
-            {/* Audio Formats */}
-            {getAudioFormats().length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Music className="h-4 w-4" />
-                    Audio Formats
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-3">
-                    {getAudioFormats().map((media) => (
-                      <div key={media.formatId} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{media.quality}</Badge>
-                            <Badge variant="secondary">{media.ext.toUpperCase()}</Badge>
-                            {media.audioQuality && (
-                              <Badge variant="outline">{media.audioQuality.replace('AUDIO_QUALITY_', '')}</Badge>
-                            )}
+              <TabsContent value="download" className="space-y-4">
+                {/* Video Formats */}
+                {getVideoFormats().length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Video className="h-4 w-4" />
+                        Video Formats
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3">
+                        {getVideoFormats().map((media) => (
+                          <div key={media.formatId} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline">{media.quality}</Badge>
+                                <Badge variant="secondary">{media.ext.toUpperCase()}</Badge>
+                                {media.fps && <Badge variant="outline">{media.fps}fps</Badge>}
+                              </div>
+                              <div className="text-sm text-muted-foreground mt-1">
+                                {media.width && media.height && `${media.width}x${media.height} • `}
+                                {media.bitrate && `${Math.round(media.bitrate / 1000)}kbps • `}
+                                {formatFileSize(media.bitrate || 0, data.duration)}
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handlePreviewVideo(media)}
+                                title="Preview video in app"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            {media.bitrate && `${Math.round(media.bitrate / 1000)}kbps • `}
-                            {media.audioSampleRate && `${media.audioSampleRate}Hz • `}
-                            {formatFileSize(media.bitrate || 0, data.duration)}
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button 
-                            size="sm" 
-                            onClick={() => handleFileDownload(media)}
-                          >
-                            <Download className="h-4 w-4 mr-1" />
-                            Download
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleCopyUrl(media)}
-                            title="Copy URL (use Ctrl+J in browser to download)"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleOpenUrl(media)}
-                            title="Open in new tab"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Audio Formats */}
+                {getAudioFormats().length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Music className="h-4 w-4" />
+                        Audio Formats
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3">
+                        {getAudioFormats().map((media) => (
+                          <div key={media.formatId} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline">{media.quality}</Badge>
+                                <Badge variant="secondary">{media.ext.toUpperCase()}</Badge>
+                                {media.audioQuality && (
+                                  <Badge variant="outline">{media.audioQuality.replace('AUDIO_QUALITY_', '')}</Badge>
+                                )}
+                              </div>
+                              <div className="text-sm text-muted-foreground mt-1">
+                                {media.bitrate && `${Math.round(media.bitrate / 1000)}kbps • `}
+                                {media.audioSampleRate && `${media.audioSampleRate}Hz • `}
+                                {formatFileSize(media.bitrate || 0, data.duration)}
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handlePreviewAudio(media)}
+                                title="Preview audio in app"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
+              <TabsContent value="preview" className="space-y-4">
+                {(selectedVideoFormat || selectedAudioFormat) ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        {selectedVideoFormat ? (
+                          <>
+                            <Monitor className="h-4 w-4" />
+                            Video Preview
+                            <Badge variant="outline">{selectedVideoFormat.quality}</Badge>
+                          </>
+                        ) : (
+                          <>
+                            <Music className="h-4 w-4" />
+                            Audio Preview
+                            <Badge variant="outline">{selectedAudioFormat?.quality}</Badge>
+                          </>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {selectedVideoFormat ? (
+                          <>
+                            {/* Video Player */}
+                            <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+                              <video
+                                className="absolute top-0 left-0 w-full h-full rounded-lg"
+                                controls
+                                poster={data.thumbnail}
+                                preload="metadata"
+                              >
+                                <source src={selectedVideoFormat.url} type={selectedVideoFormat.mimeType} />
+                                Your browser does not support the video tag.
+                              </video>
+                            </div>
+                            
+                            {/* Video Info */}
+                            <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/50">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline">{selectedVideoFormat.quality}</Badge>
+                                  <Badge variant="secondary">{selectedVideoFormat.ext.toUpperCase()}</Badge>
+                                  {selectedVideoFormat.fps && <Badge variant="outline">{selectedVideoFormat.fps}fps</Badge>}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  {selectedVideoFormat.width && selectedVideoFormat.height && `${selectedVideoFormat.width}x${selectedVideoFormat.height} • `}
+                                  {selectedVideoFormat.bitrate && `${Math.round(selectedVideoFormat.bitrate / 1000)}kbps • `}
+                                  {formatFileSize(selectedVideoFormat.bitrate || 0, data.duration)}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Alternative: YouTube Embed (fallback) */}
+                            {data.url && (
+                              <div className="space-y-2">
+                                <Separator />
+                                <p className="text-sm text-muted-foreground">
+                                  If video doesn't load above, try YouTube embed:
+                                </p>
+                                <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+                                  <iframe
+                                    className="absolute top-0 left-0 w-full h-full rounded-lg"
+                                    src={`https://www.youtube.com/embed/${getYouTubeVideoId(data.url)}?rel=0`}
+                                    title="YouTube video player"
+                                    frameBorder="0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : selectedAudioFormat ? (
+                          <>
+                            {/* Audio Player */}
+                            <div className="w-full">
+                              <audio
+                                className="w-full"
+                                controls
+                                preload="metadata"
+                              >
+                                <source src={selectedAudioFormat.url} type={selectedAudioFormat.mimeType} />
+                                Your browser does not support the audio tag.
+                              </audio>
+                            </div>
+                            
+                            {/* Audio Visualization/Artwork */}
+                            <div className="flex items-center gap-4 p-4 border rounded-lg bg-muted/50">
+                              <img 
+                                src={data.thumbnail} 
+                                alt="Audio artwork"
+                                className="w-20 h-20 object-cover rounded"
+                              />
+                              <div className="flex-1 space-y-2">
+                                <h4 className="font-semibold line-clamp-2">{data.title}</h4>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  <Music className="h-4 w-4" />
+                                  Audio Only • {formatDuration(data.duration)}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Audio Info */}
+                            <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/50">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline">{selectedAudioFormat.quality}</Badge>
+                                  <Badge variant="secondary">{selectedAudioFormat.ext.toUpperCase()}</Badge>
+                                  {selectedAudioFormat.audioQuality && (
+                                    <Badge variant="outline">{selectedAudioFormat.audioQuality.replace('AUDIO_QUALITY_', '')}</Badge>
+                                  )}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  {selectedAudioFormat.bitrate && `${Math.round(selectedAudioFormat.bitrate / 1000)}kbps • `}
+                                  {selectedAudioFormat.audioSampleRate && `${selectedAudioFormat.audioSampleRate}Hz • `}
+                                  {formatFileSize(selectedAudioFormat.bitrate || 0, data.duration)}
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        ) : null}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                        <Eye className="h-12 w-12" />
+                        <h3 className="text-lg font-medium">No Preview Selected</h3>
+                        <p className="text-sm">Click the preview button (👁️) on any format in the Download tab to see a preview here.</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
         )}
       </CardContent>
