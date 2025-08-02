@@ -3,22 +3,14 @@ import { cn } from "@/lib/utils"
 interface MainNavProps extends React.HTMLAttributes<HTMLElement> {
   currentPage: string
   setCurrentPage: (page: string) => void
-  setCurrentTool?: (tool: string | null) => void
 }
 
 export function MainNav({
   className,
   currentPage,
   setCurrentPage,
-  setCurrentTool,
   ...props
 }: MainNavProps) {
-  const handlePageChange = (page: string) => {
-    setCurrentPage(page)
-    if (setCurrentTool) {
-      setCurrentTool(null)
-    }
-  }
 
   return (
     <nav
@@ -26,7 +18,7 @@ export function MainNav({
       {...props}
     >
       <button
-        onClick={() => handlePageChange("overview")}
+        onClick={() => setCurrentPage("overview")}
         className={cn(
           "text-sm font-medium transition-colors hover:text-primary",
           currentPage === "overview" ? "text-foreground" : "text-muted-foreground"
@@ -35,7 +27,7 @@ export function MainNav({
         Overview
       </button>
       <button
-        onClick={() => handlePageChange("tools")}
+        onClick={() => setCurrentPage("tools")}
         className={cn(
           "text-sm font-medium transition-colors hover:text-primary",
           currentPage === "tools" ? "text-foreground" : "text-muted-foreground"
