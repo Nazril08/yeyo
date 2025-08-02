@@ -6,23 +6,20 @@ interface Tool {
   name: string;
   title: string;
   description: string;
-  category: 'download' | 'ai';
   icon: React.ReactNode;
 }
 
 interface ToolsOverviewProps {
   onToolSelect: (toolId: string) => void;
-  category?: 'overview' | 'download' | 'ai';
 }
 
-export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOverviewProps) {
+export function ToolsOverview({ onToolSelect }: ToolsOverviewProps) {
   const tools: Tool[] = [
     {
       id: 'yt-mp4',
       name: 'YT MP4 Downloader',
       title: 'YouTube to MP4',
       description: 'Download videos from YouTube',
-      category: 'download',
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -44,7 +41,6 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
       name: 'Spotify Downloader',
       title: 'Spotify to MP3',
       description: 'Download music from Spotify',
-      category: 'download',
       icon: (
         <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
           <span className="text-white text-xs font-bold">S</span>
@@ -56,7 +52,6 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
       name: 'Threads Downloader',
       title: 'Threads Media',
       description: 'Download videos and images from Threads',
-      category: 'download',
       icon: (
         <div className="w-4 h-4 bg-black rounded-lg flex items-center justify-center">
           <span className="text-white text-xs font-bold">@</span>
@@ -68,7 +63,6 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
       name: 'TikTok Downloader',
       title: 'TikTok Videos',
       description: 'Download videos and audio from TikTok',
-      category: 'download',
       icon: (
         <div className="w-4 h-4 bg-black rounded-lg flex items-center justify-center">
           <span className="text-white text-xs font-bold">T</span>
@@ -80,7 +74,6 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
       name: 'YouTube Downloader',
       title: 'YouTube Videos',
       description: 'Download videos and audio from YouTube',
-      category: 'download',
       icon: (
         <div className="w-4 h-4 bg-red-600 rounded-lg flex items-center justify-center">
           <svg
@@ -98,7 +91,6 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
       name: 'Facebook Downloader',
       title: 'Facebook Videos',
       description: 'Download videos and audio from Facebook',
-      category: 'download',
       icon: (
         <div className="w-4 h-4 bg-blue-600 rounded-lg flex items-center justify-center">
           <svg
@@ -116,7 +108,6 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
       name: 'Instagram Downloader',
       title: 'Instagram Content',
       description: 'Download posts, reels, and stories from Instagram',
-      category: 'download',
       icon: (
         <div className="w-4 h-4 bg-gradient-to-br from-purple-600 via-pink-600 to-orange-600 rounded-lg flex items-center justify-center">
           <svg
@@ -128,37 +119,12 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
           </svg>
         </div>
       )
-    },
-    {
-      id: 'animagine-xl',
-      name: 'Animagine XL',
-      title: 'AI Image Generator',
-      description: 'Create stunning images using AI technology',
-      category: 'ai',
-      icon: (
-        <div className="w-4 h-4 bg-purple-600 rounded-lg flex items-center justify-center">
-          <svg
-            viewBox="0 0 24 24"
-            fill="white"
-            className="w-3 h-3"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-            <circle cx="8.5" cy="8.5" r="1.5"/>
-            <polyline points="21,15 16,10 5,21"/>
-          </svg>
-        </div>
-      )
     }
   ];
 
-  // Filter tools based on category
-  const filteredTools = category === 'overview' 
-    ? tools 
-    : tools.filter(tool => tool.category === category);
-
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {filteredTools.map((tool) => (
+      {tools.map((tool) => (
         <Card 
           key={tool.id}
           className="cursor-pointer hover:shadow-md transition-shadow"

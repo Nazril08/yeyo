@@ -62,17 +62,15 @@ export function ToolsLayout({ className }: ToolsLayoutProps) {
       
       {/* Tools Content */}
       {toolsSubPage === "overview" && (
-        <ToolsOverview onToolSelect={handleToolSelect} />
+        <ToolsOverview onToolSelect={handleToolSelect} category="overview" />
       )}
       
       {toolsSubPage === "download" && (
-        <ToolsOverview onToolSelect={handleToolSelect} />
+        <ToolsOverview onToolSelect={handleToolSelect} category="download" />
       )}
       
       {toolsSubPage === "ai" && (
-        <div className="text-center text-muted-foreground py-12">
-          AI Tools coming soon...
-        </div>
+        <ToolsOverview onToolSelect={handleToolSelect} category="ai" />
       )}
     </div>
   );
