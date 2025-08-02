@@ -6,6 +6,7 @@ import { Search } from "@/dashboard/components/search"
 import TeamSwitcher from "@/dashboard/components/team-switcher"
 import { UserNav } from "@/dashboard/components/user-nav"
 import { ToolsLayout } from "@/dashboard/components/tools"
+import { MediaPlayer } from "@/dashboard/components/media-player"
 
 export default function DashboardPage() {
   const [currentPage, setCurrentPage] = useState("overview")
@@ -46,6 +47,10 @@ export default function DashboardPage() {
 
           {currentPage === "tools" && (
             <ToolsLayout />
+          )}
+
+          {currentPage === "media-player" && (
+            <MediaPlayer />
           )}
         </div>
       </div>

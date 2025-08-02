@@ -35,6 +35,15 @@ export function MainNav({
       >
         Tools
       </button>
+      <button
+        onClick={() => setCurrentPage("media-player")}
+        className={cn(
+          "text-sm font-medium transition-colors hover:text-primary",
+          currentPage === "media-player" ? "text-foreground" : "text-muted-foreground"
+        )}
+      >
+        Media Player
+      </button>
     </nav>
   )
 }
