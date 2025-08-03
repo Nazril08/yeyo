@@ -6,14 +6,16 @@ import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { useToast } from '@/components/ui/use-toast'
 import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward, Upload, ArrowLeft, Music } from 'lucide-react'
-import { useDirectoryBrowser, MediaFile } from '@/hooks/use-directory-browser'
-import { FileList } from '@/components/file-list'
+import { useMultiDirectoryBrowser, MediaFile } from '@/hooks/use-multi-directory-browser'
+import { MultiDirectoryList } from '@/components/multi-directory-list'
+import { useMultiDirectoryStore } from '@/stores/multi-directory-provider'
+import { invoke } from '@tauri-apps/api/tauri'
 
-interface MusicPlayerProps {
+interface MultiMusicPlayerProps {
   onBack: () => void
 }
 
-export function MusicPlayer({ onBack }: MusicPlayerProps) {
+export function MultiMusicPlayer({ onBack }: MultiMusicPlayerProps) {
   const [currentFile, setCurrentFile] = useState<MediaFile | null>(null)
   const [fileURL, setFileURL] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -27,57 +29,57 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
+  // Multi directory store
+  const { musicDirectories, addMusicDirectory, removeMusicDirectory } = useMultiDirectoryStore()
+
   // Audio file extensions
-  const audioExtensions = ['mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'wma', 'opus', 'webm']
+  const audioExtensions = ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma']
   
   const {
-    selectedDirectory,
     files,
     isLoading,
-    isAutoRefreshEnabled,
     lastRefresh,
-    selectDirectory,
     refreshFiles,
     getFileUrl,
-    setIsAutoRefreshEnabled
-  } = useDirectoryBrowser({
+  } = useMultiDirectoryBrowser({
     fileTypes: audioExtensions,
-    autoRefreshInterval: 5000
+    directories: musicDirectories
   })
 
-  // Filter only audio files
-  const audioFiles = files.filter(file => file.type === 'audio')
-
-  // Cleanup URL when component unmounts or file changes
-  useEffect(() => {
-    return () => {
-      if (fileURL) {
-        URL.revokeObjectURL(fileURL)
+  // Add directory function
+  const handleAddDirectory = async () => {
+    try {
+      const selectedDirectory = await invoke<string>('select_directory')
+      if (selectedDirectory) {
+        addMusicDirectory(selectedDirectory)
+        toast({
+          title: "Directory Added",
+          description: `Added: ${selectedDirectory}`,
+        })
       }
+    } catch (error) {
+      console.error('Failed to select directory:', error)
+      toast({
+        title: "Directory Selection Failed",
+        description: "Failed to select directory",
+        variant: "destructive",
+      })
     }
-  }, [fileURL])
-
-  // Initialize audio when file is loaded
-  useEffect(() => {
-    if (audioRef.current && fileURL) {
-      audioRef.current.load()
-    }
-  }, [fileURL])
+  }
 
   // Handle file selection from directory
   const handleDirectoryFileSelect = async (file: MediaFile) => {
     try {
+      console.log('Loading file from directory:', file)
+      
       // Clean up previous URL - only if it was created by createObjectURL
       if (fileURL && currentFile && !currentFile.path) {
         URL.revokeObjectURL(fileURL)
       }
       
-      console.log('Loading audio file from directory:', file.path)
-      const newURL = await getFileUrl(file.path)
-      console.log('Converted audio URL:', newURL)
-      
+      const url = await getFileUrl(file)
       setCurrentFile(file)
-      setFileURL(newURL)
+      setFileURL(url)
       setIsPlaying(false)
       setCurrentTime(0)
       setDuration(0)
@@ -102,38 +104,6 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
       if (file.type.startsWith('audio/')) {
         // Clean up previous URL - only if it was created by createObjectURL
         if (fileURL && currentFile && !currentFile.path) {
-          URL.revokeObjectURL(fileURL)
-        }
-        
-        const newURL = URL.createObjectURL(file)
-        // Convert File to MediaFile format for consistency
-        const mediaFile: MediaFile = {
-          name: file.name,
-          path: '', // Empty path indicates this is from manual upload
-          size: file.size,
-          modified: Date.now() / 1000,
-          type: 'audio'
-        }
-        setCurrentFile(mediaFile)
-        setFileURL(newURL)
-        setIsPlaying(false)
-        setCurrentTime(0)
-        setDuration(0)
-        
-        toast({
-          title: "Audio loaded",
-          description: `${file.name} loaded successfully`,
-        })
-      } else {
-        toast({
-          title: "Invalid file type",
-          description: "Please select an audio file",
-          variant: "destructive",
-        })
-      }
-    }
-  }
-        if (fileURL) {
           URL.revokeObjectURL(fileURL)
         }
         
@@ -178,14 +148,27 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
         setIsPlaying(true)
       }
     } catch (error) {
-      console.error('Playback failed:', error)
+      console.error('Play/pause error:', error)
       toast({
         title: "Playback Error",
-        description: "Failed to play audio. Please try again.",
+        description: "Failed to play audio",
         variant: "destructive",
       })
-      setIsPlaying(false)
     }
+  }
+
+  const skipTime = (seconds: number) => {
+    if (audioRef.current) {
+      const newTime = Math.max(0, Math.min(duration, currentTime + seconds))
+      audioRef.current.currentTime = newTime
+      setCurrentTime(newTime)
+    }
+  }
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60)
+    const seconds = Math.floor(time % 60)
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
   const handleTimeUpdate = () => {
@@ -236,42 +219,44 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
     }
   }
 
-  const skipTime = (seconds: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + seconds))
+  // Cleanup function
+  useEffect(() => {
+    return () => {
+      if (fileURL && currentFile && !currentFile.path) {
+        URL.revokeObjectURL(fileURL)
+      }
     }
-  }
+  }, [fileURL, currentFile])
 
-  const formatTime = (time: number): string => {
-    const minutes = Math.floor(time / 60)
-    const seconds = Math.floor(time % 60)
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`
-  }
+  const audioFiles = files.filter(file => file.type === 'audio')
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center space-x-2">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
         </Button>
-        <Music className="h-6 w-6 text-green-500" />
-        <h2 className="text-2xl font-bold">Music Player</h2>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Music className="w-6 h-6" />
+          Multi-Directory Music Player
+        </h1>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* File Browser */}
-        <div className="lg:col-span-1">
-          <FileList
-            selectedDirectory={selectedDirectory}
+        <div>
+          <MultiDirectoryList
+            title="Music Library"
+            directories={musicDirectories}
             files={audioFiles}
             isLoading={isLoading}
-            isAutoRefreshEnabled={isAutoRefreshEnabled}
             lastRefresh={lastRefresh}
             currentFile={currentFile}
-            onSelectDirectory={selectDirectory}
+            onAddDirectory={handleAddDirectory}
+            onRemoveDirectory={removeMusicDirectory}
             onRefresh={refreshFiles}
             onFileSelect={handleDirectoryFileSelect}
-            onToggleAutoRefresh={setIsAutoRefreshEnabled}
           />
         </div>
 
@@ -308,17 +293,10 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
                 )}
               </div>
 
-              {/* Audio Display */}
+              {/* Audio Player */}
               {currentFile && (
-                <div className="space-y-4">
-                  <div className="w-full h-48 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
-                    <div className="text-center text-white">
-                      <div className="text-6xl mb-4">🎵</div>
-                      <p className="text-lg font-medium">{currentFile.name}</p>
-                      <p className="text-sm opacity-75">Audio File</p>
-                    </div>
-                  </div>
-
+                <div className="space-y-6">
+                  {/* Audio Element (hidden) */}
                   <audio
                     ref={audioRef}
                     src={fileURL || undefined}
@@ -335,101 +313,112 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
                         variant: "destructive",
                       })
                     }}
-                    className="hidden"
                     preload="metadata"
                   />
 
-                  {/* Controls */}
-                  <div className="space-y-4">
-                    {/* Progress Bar */}
+                  {/* Album Art Placeholder */}
+                  <div className="flex justify-center">
+                    <div className="w-64 h-64 bg-gradient-to-br from-primary/20 to-secondary/20 rounded-lg flex items-center justify-center">
+                      <Music className="w-16 h-16 text-muted-foreground" />
+                    </div>
+                  </div>
+
+                  {/* Track Info */}
+                  <div className="text-center space-y-2">
+                    <h3 className="text-xl font-semibold">{currentFile.name}</h3>
+                    <p className="text-muted-foreground">
+                      {(currentFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="space-y-2">
+                    <Slider
+                      value={[duration > 0 ? (currentTime / duration) * 100 : 0]}
+                      onValueChange={handleSeek}
+                      max={100}
+                      step={0.1}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>{formatTime(currentTime)}</span>
+                      <span>{formatTime(duration)}</span>
+                    </div>
+                  </div>
+
+                  {/* Control Buttons */}
+                  <div className="flex items-center justify-center gap-4">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => skipTime(-10)}
+                      disabled={!currentFile}
+                    >
+                      <SkipBack className="w-4 h-4" />
+                    </Button>
+                    
+                    <Button
+                      size="icon"
+                      onClick={togglePlayPause}
+                      disabled={!currentFile}
+                      className="w-16 h-16"
+                    >
+                      {isPlaying ? (
+                        <Pause className="w-8 h-8" />
+                      ) : (
+                        <Play className="w-8 h-8" />
+                      )}
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => skipTime(10)}
+                      disabled={!currentFile}
+                    >
+                      <SkipForward className="w-4 h-4" />
+                    </Button>
+                  </div>
+
+                  {/* Volume and Speed Controls */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Volume Control */}
                     <div className="space-y-2">
+                      <Label className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={toggleMute}
+                          className="w-6 h-6 p-0"
+                        >
+                          {isMuted ? (
+                            <VolumeX className="w-4 h-4" />
+                          ) : (
+                            <Volume2 className="w-4 h-4" />
+                          )}
+                        </Button>
+                        Volume: {isMuted ? 0 : volume[0]}%
+                      </Label>
                       <Slider
-                        value={[duration > 0 ? (currentTime / duration) * 100 : 0]}
-                        onValueChange={handleSeek}
+                        value={isMuted ? [0] : volume}
+                        onValueChange={handleVolumeChange}
                         max={100}
-                        step={0.1}
-                        className="w-full"
+                        step={1}
+                        disabled={!currentFile}
                       />
-                      <div className="flex justify-between text-sm text-muted-foreground">
-                        <span>{formatTime(currentTime)}</span>
-                        <span>{formatTime(duration)}</span>
-                      </div>
                     </div>
 
-                    {/* Control Buttons */}
-                    <div className="flex items-center justify-center gap-4">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => skipTime(-10)}
+                    {/* Speed Control */}
+                    <div className="space-y-2">
+                      <Label>Playback Speed: {playbackRate[0]}x</Label>
+                      <Slider
+                        value={playbackRate}
+                        onValueChange={handlePlaybackRateChange}
+                        min={0.25}
+                        max={2}
+                        step={0.25}
                         disabled={!currentFile}
-                      >
-                        <SkipBack className="w-4 h-4" />
-                      </Button>
-                      
-                      <Button
-                        size="icon"
-                        onClick={togglePlayPause}
-                        disabled={!currentFile}
-                        className="w-12 h-12"
-                      >
-                        {isPlaying ? (
-                          <Pause className="w-6 h-6" />
-                        ) : (
-                          <Play className="w-6 h-6" />
-                        )}
-                      </Button>
-                      
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => skipTime(10)}
-                        disabled={!currentFile}
-                      >
-                        <SkipForward className="w-4 h-4" />
-                      </Button>
-                    </div>
-
-                    {/* Volume and Speed Controls */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Volume Control */}
-                      <div className="space-y-2">
-                        <Label className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={toggleMute}
-                            className="w-6 h-6 p-0"
-                          >
-                            {isMuted ? (
-                              <VolumeX className="w-4 h-4" />
-                            ) : (
-                              <Volume2 className="w-4 h-4" />
-                            )}
-                          </Button>
-                          Volume: {isMuted ? 0 : volume[0]}%
-                        </Label>
-                        <Slider
-                          value={isMuted ? [0] : volume}
-                          onValueChange={handleVolumeChange}
-                          max={100}
-                          step={1}
-                          disabled={!currentFile}
-                        />
-                      </div>
-
-                      {/* Speed Control */}
-                      <div className="space-y-2">
-                        <Label>Playback Speed: {playbackRate[0]}x</Label>
-                        <Slider
-                          value={playbackRate}
-                          onValueChange={handlePlaybackRateChange}
-                          min={0.25}
-                          max={2}
-                          step={0.25}
-                          disabled={!currentFile}
-                        />
-                      </div>
+                      />
                     </div>
                   </div>
                 </div>
@@ -439,7 +428,7 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
                 <div className="text-center py-12 text-muted-foreground">
                   <div className="text-6xl mb-4">🎵</div>
                   <p className="text-lg">No audio file selected</p>
-                  <p className="text-sm">Select a directory or upload an audio file to start playing</p>
+                  <p className="text-sm">Add directories or upload an audio file to start playing</p>
                 </div>
               )}
             </CardContent>

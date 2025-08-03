@@ -139,6 +139,21 @@ async fn get_file_url(path: String) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+async fn toggle_fullscreen(window: Window) -> Result<(), String> {
+    match window.is_fullscreen() {
+        Ok(is_fullscreen) => {
+            if is_fullscreen {
+                window.set_fullscreen(false).map_err(|e| e.to_string())?;
+            } else {
+                window.set_fullscreen(true).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        }
+        Err(e) => Err(e.to_string())
+    }
+}
+
 async fn download_file_internal(url: String, path: String) -> Result<(), Box<dyn std::error::Error>> {
     // Create HTTP client
     let client = reqwest::Client::new();
@@ -167,7 +182,8 @@ fn main() {
             download_file, 
             select_directory, 
             scan_media_files, 
-            get_file_url
+            get_file_url,
+            toggle_fullscreen
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

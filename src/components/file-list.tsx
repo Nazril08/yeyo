@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Checkbox } from '@/components/ui/checkbox'
 import { 
   Folder, 
   RefreshCw, 
@@ -10,7 +11,10 @@ import {
   Music, 
   Video, 
   Clock,
-  HardDrive
+  HardDrive,
+  Plus,
+  Check,
+  X
 } from 'lucide-react'
 import { MediaFile } from '@/hooks/use-directory-browser'
 
@@ -23,6 +27,8 @@ interface FileListProps {
   onSelectDirectory: () => void
   onRefresh: () => void
   onFileSelect: (file: MediaFile) => void
+  onMultipleAdd?: (files: MediaFile[]) => void
+  showMultiSelect?: boolean
 }
 
 export function FileList({
@@ -33,8 +39,12 @@ export function FileList({
   currentFile,
   onSelectDirectory,
   onRefresh,
-  onFileSelect
+  onFileSelect,
+  onMultipleAdd,
+  showMultiSelect = false
 }: FileListProps) {
+  const [selectedFiles, setSelectedFiles] = useState<MediaFile[]>([])
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false)
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 B'
     const k = 1024
@@ -47,6 +57,38 @@ export function FileList({
     return new Date(timestamp * 1000).toLocaleDateString()
   }
 
+  const toggleFileSelection = (file: MediaFile) => {
+    setSelectedFiles(prev => {
+      const isSelected = prev.some(f => f.path === file.path)
+      if (isSelected) {
+        return prev.filter(f => f.path !== file.path)
+      } else {
+        return [...prev, file]
+      }
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedFiles.length === files.length) {
+      setSelectedFiles([])
+    } else {
+      setSelectedFiles([...files])
+    }
+  }
+
+  const handleMultiAdd = () => {
+    if (onMultipleAdd && selectedFiles.length > 0) {
+      onMultipleAdd(selectedFiles)
+      setSelectedFiles([])
+      setIsMultiSelectMode(false)
+    }
+  }
+
+  const cancelMultiSelect = () => {
+    setSelectedFiles([])
+    setIsMultiSelectMode(false)
+  }
+
   return (
     <Card className="h-full">
       <CardHeader>
@@ -56,6 +98,17 @@ export function FileList({
             Media Library
           </CardTitle>
           <div className="flex items-center gap-2">
+            {showMultiSelect && !isMultiSelectMode && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsMultiSelectMode(true)}
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add to Playlist
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -93,6 +146,40 @@ export function FileList({
                 </div>
               )}
             </div>
+            {isMultiSelectMode && (
+              <div className="flex items-center justify-between gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                <div className="flex items-center gap-3 text-sm">
+                  <Checkbox
+                    checked={selectedFiles.length === files.length && files.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                    className="data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                  />
+                  <span className="font-medium">
+                    {selectedFiles.length} of {files.length} selected
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleMultiAdd}
+                    disabled={selectedFiles.length === 0}
+                    className="flex items-center gap-2"
+                  >
+                    <Check className="h-4 w-4" />
+                    Add ({selectedFiles.length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelMultiSelect}
+                    className="flex items-center gap-2"
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -120,45 +207,70 @@ export function FileList({
               </div>
             ) : (
               <div className="space-y-2">
-                {files.map((file, index) => (
-                  <div
-                    key={`${file.path}-${index}`}
-                    className={`p-3 rounded-lg border cursor-pointer hover:bg-accent transition-colors ${
-                      currentFile?.path === file.path ? 'bg-accent border-primary' : ''
-                    }`}
-                    onClick={() => onFileSelect(file)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0">
-                        {file.type === 'video' ? (
-                          <Video className="h-5 w-5 text-red-500" />
-                        ) : (
-                          <Music className="h-5 w-5 text-green-500" />
+                {files.map((file, index) => {
+                  const isSelected = selectedFiles.some(f => f.path === file.path)
+                  const isCurrent = currentFile?.path === file.path
+                  
+                  return (
+                    <div
+                      key={`${file.path}-${index}`}
+                      className={`p-3 rounded-lg border transition-all ${
+                        isCurrent ? 'bg-primary/10 border-primary shadow-sm' : 
+                        isSelected ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800' : 
+                        'hover:bg-accent border-border'
+                      }`}
+                      onClick={() => {
+                        if (isMultiSelectMode) {
+                          toggleFileSelection(file)
+                        } else {
+                          onFileSelect(file)
+                        }
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        {isMultiSelectMode && (
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleFileSelection(file)}
+                            className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                          />
                         )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">
-                            {file.name}
-                          </span>
-                          {currentFile?.path === file.path && (
-                            <Badge variant="secondary" className="text-xs">
-                              <Play className="h-3 w-3 mr-1" />
-                              Current
-                            </Badge>
+                        <div className="flex-shrink-0">
+                          {file.type === 'video' ? (
+                            <Video className="h-5 w-5 text-red-500" />
+                          ) : (
+                            <Music className="h-5 w-5 text-green-500" />
                           )}
                         </div>
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
-                          <span>{formatFileSize(file.size)}</span>
-                          <span>{formatDate(file.modified)}</span>
-                          <Badge variant="outline" className="text-xs">
-                            {file.type}
-                          </Badge>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium truncate max-w-full" title={file.name}>
+                              {file.name}
+                            </span>
+                            {isCurrent && (
+                              <Badge variant="secondary" className="text-xs flex-shrink-0">
+                                <Play className="h-3 w-3 mr-1" />
+                                Current
+                              </Badge>
+                            )}
+                            {isSelected && isMultiSelectMode && (
+                              <Badge variant="secondary" className="text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 flex-shrink-0">
+                                ✓ Selected
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
+                            <span>{formatFileSize(file.size)}</span>
+                            <span>{formatDate(file.modified)}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {file.type}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </ScrollArea>

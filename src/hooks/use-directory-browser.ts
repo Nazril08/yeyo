@@ -82,10 +82,25 @@ export function useDirectoryBrowser({
 
   const getFileUrl = useCallback(async (filePath: string): Promise<string> => {
     try {
+      console.log('Converting file path to URL:', filePath)
+      
+      if (!filePath || filePath.trim().length === 0) {
+        console.error('Invalid file path provided:', filePath)
+        return ''
+      }
+      
       // Use Tauri's convertFileSrc to properly convert file path to URL
-      return convertFileSrc(filePath)
+      const url = convertFileSrc(filePath)
+      console.log('Converted URL:', url)
+      
+      if (!url || url.length === 0) {
+        console.error('convertFileSrc returned empty URL for path:', filePath)
+        return ''
+      }
+      
+      return url
     } catch (error) {
-      console.error('Failed to convert file path:', error)
+      console.error('Failed to convert file path:', filePath, 'Error:', error)
       return ''
     }
   }, [])

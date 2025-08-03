@@ -86,3 +86,60 @@
       "calt" 1;
   }
 }
+
+/* Fullscreen video styles for true YouTube-like native fullscreen */
+video:fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  object-fit: contain !important;
+  background: black !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
+}
+
+/* Fallback for container fullscreen */
+div:fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  background: black !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+div:fullscreen video {
+  width: 100vw !important;
+  height: 100vh !important;
+  object-fit: contain !important;
+  background: black !important;
+}
+
+/* Hide all native browser video controls in fullscreen */
+video:fullscreen::-webkit-media-controls {
+  display: none !important;
+}
+
+video:fullscreen::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+
+video:fullscreen::-webkit-media-controls-panel {
+  display: none !important;
+}
+
+video:fullscreen::-moz-media-controls {
+  display: none !important;
+}
+
+/* Hide scrollbars globally in fullscreen */
+:fullscreen {
+  overflow: hidden !important;
+}
+
+::backdrop {
+  background: black !important;
+}

@@ -24,6 +24,15 @@ import {
   Twitter,
   User,
   X,
+  Music,
+  Minus,
+  Maximize,
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  PictureInPicture,
   type XIcon as LucideIcon,
 } from "lucide-react"
 
@@ -151,4 +160,13 @@ export const Icons = {
       />
     </svg>
   ),
+  music: Music,
+  minus: Minus,
+  maximize: Maximize,
+  play: Play,
+  pause: Pause,
+  skipBack: SkipBack,
+  skipForward: SkipForward,
+  volume2: Volume2,
+  pictureInPicture: PictureInPicture,
 }

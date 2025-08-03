@@ -6,6 +6,7 @@ import { Menu } from "@/components/menu"
 import { TailwindIndicator } from "./components/tailwind-indicator"
 import { ThemeProvider } from "./components/theme-provider"
 import { MediaDirectoryProvider } from "./stores/media-directory-provider"
+import { PlaylistProvider } from "./stores/playlist-store"
 import DashboardPage from "./dashboard/page"
 import { cn } from "./lib/utils"
 
@@ -21,11 +22,12 @@ function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <MediaDirectoryProvider>
-        <div className="h-screen overflow-clip">
-          <Menu />
-          <div
-            className={cn(
-              "h-screen overflow-auto border-t bg-background pb-8",
+        <PlaylistProvider>
+          <div className="h-screen overflow-clip">
+            <Menu />
+            <div
+              className={cn(
+                "h-screen overflow-auto border-t bg-background pb-8",
               // "scrollbar-none"
               "scrollbar scrollbar-track-transparent scrollbar-thumb-accent scrollbar-thumb-rounded-md"
             )}
@@ -34,6 +36,7 @@ function App() {
           </div>
         </div>
         <TailwindIndicator />
+        </PlaylistProvider>
       </MediaDirectoryProvider>
     </ThemeProvider>
   )

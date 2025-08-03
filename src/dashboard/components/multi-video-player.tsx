@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,16 +6,16 @@ import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { useToast } from '@/components/ui/use-toast'
 import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward, Upload, ArrowLeft, Video, Maximize, Minimize } from 'lucide-react'
-import { useDirectoryBrowser, MediaFile } from '@/hooks/use-directory-browser'
-import { FileList } from '@/components/file-list'
-import { useMediaDirectoryStore } from '@/stores/media-directory-provider'
+import { useMultiDirectoryBrowser, MediaFile } from '@/hooks/use-multi-directory-browser'
+import { MultiDirectoryList } from '@/components/multi-directory-list'
+import { useMultiDirectoryStore } from '@/stores/multi-directory-provider'
 import { invoke } from '@tauri-apps/api/tauri'
 
-interface VideoPlayerProps {
+interface MultiVideoPlayerProps {
   onBack: () => void
 }
 
-export function VideoPlayer({ onBack }: VideoPlayerProps) {
+export function MultiVideoPlayer({ onBack }: MultiVideoPlayerProps) {
   const [currentFile, setCurrentFile] = useState<MediaFile | null>(null)
   const [fileURL, setFileURL] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -26,82 +25,63 @@ export function VideoPlayer({ onBack }: VideoPlayerProps) {
   const [isMuted, setIsMuted] = useState(false)
   const [playbackRate, setPlaybackRate] = useState([1])
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [showControls, setShowControls] = useState(true)
-  const [controlsTimeout, setControlsTimeout] = useState<NodeJS.Timeout | null>(null)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const videoContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
-  // Global directory store
-  const { selectedDirectory: globalDirectory, setSelectedDirectory: setGlobalDirectory } = useMediaDirectoryStore()
+  // Multi directory store
+  const { videoDirectories, addVideoDirectory, removeVideoDirectory } = useMultiDirectoryStore()
 
   // Video file extensions
   const videoExtensions = ['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', '3gp', 'ogv']
   
   const {
-    selectedDirectory,
     files,
     isLoading,
     lastRefresh,
-    selectDirectory: selectDirectoryHook,
     refreshFiles,
     getFileUrl,
-    setSelectedDirectory
-  } = useDirectoryBrowser({
+  } = useMultiDirectoryBrowser({
     fileTypes: videoExtensions,
-    initialDirectory: globalDirectory
+    directories: videoDirectories
   })
 
-  // Custom selectDirectory that updates global store
-  const selectDirectory = async () => {
-    const newDirectory = await selectDirectoryHook()
-    if (newDirectory) {
-      setGlobalDirectory(newDirectory)
+  // Add directory function
+  const handleAddDirectory = async () => {
+    try {
+      const selectedDirectory = await invoke<string>('select_directory')
+      if (selectedDirectory) {
+        addVideoDirectory(selectedDirectory)
+        toast({
+          title: "Directory Added",
+          description: `Added: ${selectedDirectory}`,
+        })
+      }
+    } catch (error) {
+      console.error('Failed to select directory:', error)
+      toast({
+        title: "Directory Selection Failed",
+        description: "Failed to select directory",
+        variant: "destructive",
+      })
     }
   }
-
-  // Sync global directory changes with local hook
-  useEffect(() => {
-    if (globalDirectory && globalDirectory !== selectedDirectory) {
-      setSelectedDirectory(globalDirectory)
-    }
-  }, [globalDirectory, selectedDirectory, setSelectedDirectory])
-
-  // Filter only video files
-  const videoFiles = files.filter(file => file.type === 'video')
-
-  // Cleanup URL when component unmounts or file changes
-  useEffect(() => {
-    return () => {
-      if (fileURL) {
-        URL.revokeObjectURL(fileURL)
-      }
-    }
-  }, [fileURL])
-
-  // Initialize video when file is loaded
-  useEffect(() => {
-    if (videoRef.current && fileURL) {
-      videoRef.current.load()
-    }
-  }, [fileURL])
 
   // Handle file selection from directory
   const handleDirectoryFileSelect = async (file: MediaFile) => {
     try {
+      console.log('Loading file from directory:', file)
+      
       // Clean up previous URL - only if it was created by createObjectURL
       if (fileURL && currentFile && !currentFile.path) {
         URL.revokeObjectURL(fileURL)
       }
       
-      console.log('Loading file from directory:', file.path)
-      const newURL = await getFileUrl(file.path)
-      console.log('Converted URL:', newURL)
-      
+      const url = await getFileUrl(file)
       setCurrentFile(file)
-      setFileURL(newURL)
+      setFileURL(url)
       setIsPlaying(false)
       setCurrentTime(0)
       setDuration(0)
@@ -170,14 +150,27 @@ export function VideoPlayer({ onBack }: VideoPlayerProps) {
         setIsPlaying(true)
       }
     } catch (error) {
-      console.error('Playback failed:', error)
+      console.error('Play/pause error:', error)
       toast({
         title: "Playback Error",
-        description: "Failed to play video. Please try again.",
+        description: "Failed to play video",
         variant: "destructive",
       })
-      setIsPlaying(false)
     }
+  }
+
+  const skipTime = (seconds: number) => {
+    if (videoRef.current) {
+      const newTime = Math.max(0, Math.min(duration, currentTime + seconds))
+      videoRef.current.currentTime = newTime
+      setCurrentTime(newTime)
+    }
+  }
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60)
+    const seconds = Math.floor(time % 60)
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
   const handleTimeUpdate = () => {
@@ -221,87 +214,33 @@ export function VideoPlayer({ onBack }: VideoPlayerProps) {
     }
   }
 
-  const handleMouseMove = () => {
-    if (!isFullscreen) return
-    
-    // Show cursor and controls
-    document.body.style.cursor = 'default'
-    setShowControls(true)
-    
-    // Clear existing timeout
-    if (controlsTimeout) {
-      clearTimeout(controlsTimeout)
-    }
-    
-    // Set new timeout to hide controls and cursor after 3 seconds
-    const timeout = setTimeout(() => {
-      setShowControls(false)
-      if (isFullscreen) {
-        document.body.style.cursor = 'none'
-      }
-    }, 3000)
-    
-    setControlsTimeout(timeout)
-  }
-
   const toggleFullscreen = async () => {
+    if (!videoContainerRef.current) return
+
     try {
-      if (!isFullscreen) {
-        // Masuk ke fullscreen mode
+      if (!document.fullscreenElement) {
+        await videoContainerRef.current.requestFullscreen()
         setIsFullscreen(true)
-        
-        // Hide body scrollbar and set background
-        document.body.style.overflow = 'hidden'
-        document.body.style.background = 'black'
-        
-        // Show controls initially, then auto-hide
-        setShowControls(true)
-        const timeout = setTimeout(() => {
-          setShowControls(false)
-          document.body.style.cursor = 'none'
-        }, 3000)
-        setControlsTimeout(timeout)
-        
-        // Try to use Tauri window fullscreen if available
-        try {
-          await invoke('toggle_fullscreen')
-        } catch (tauriError) {
-          console.log('Tauri fullscreen not available, using CSS fullscreen')
-        }
       } else {
-        // Keluar dari fullscreen
+        await document.exitFullscreen()
         setIsFullscreen(false)
-        
-        // Restore body styles
-        document.body.style.overflow = 'auto'
-        document.body.style.background = ''
-        document.body.style.cursor = 'default'
-        
-        setShowControls(true)
-        if (controlsTimeout) {
-          clearTimeout(controlsTimeout)
-          setControlsTimeout(null)
-        }
-        
-        // Try to exit Tauri fullscreen
-        try {
-          await invoke('toggle_fullscreen')
-        } catch (tauriError) {
-          console.log('Tauri fullscreen not available')
-        }
       }
     } catch (error) {
       console.error('Fullscreen error:', error)
       toast({
-        title: "Fullscreen Error", 
+        title: "Fullscreen Error",
         description: "Failed to toggle fullscreen mode",
         variant: "destructive",
       })
     }
   }
 
-  // Listen for keyboard events
+  // Listen for fullscreen changes
   useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) {
         toggleFullscreen()
@@ -310,26 +249,16 @@ export function VideoPlayer({ onBack }: VideoPlayerProps) {
         e.preventDefault()
         togglePlayPause()
       }
-      if (e.key === 'f' && currentFile) {
-        e.preventDefault()
-        toggleFullscreen()
-      }
     }
 
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
     document.addEventListener('keydown', handleKeyDown)
     
     return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
       document.removeEventListener('keydown', handleKeyDown)
-      document.removeEventListener('mousemove', handleMouseMove)
-      // Cleanup styles on unmount
-      document.body.style.overflow = 'auto'
-      document.body.style.background = ''
-      document.body.style.cursor = 'default'
-      if (controlsTimeout) {
-        clearTimeout(controlsTimeout)
-      }
     }
-  }, [isFullscreen, currentFile, controlsTimeout])
+  }, [isFullscreen, currentFile])
 
   const handlePlaybackRateChange = (value: number[]) => {
     if (videoRef.current) {
@@ -338,38 +267,42 @@ export function VideoPlayer({ onBack }: VideoPlayerProps) {
     }
   }
 
-  const skipTime = (seconds: number) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = Math.max(0, Math.min(duration, videoRef.current.currentTime + seconds))
+  // Cleanup function
+  useEffect(() => {
+    return () => {
+      if (fileURL && currentFile && !currentFile.path) {
+        URL.revokeObjectURL(fileURL)
+      }
     }
-  }
+  }, [fileURL, currentFile])
 
-  const formatTime = (time: number): string => {
-    const minutes = Math.floor(time / 60)
-    const seconds = Math.floor(time % 60)
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`
-  }
+  const videoFiles = files.filter(file => file.type === 'video')
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center space-x-2">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
         </Button>
-        <Video className="h-6 w-6 text-red-500" />
-        <h2 className="text-2xl font-bold">Video Player</h2>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Video className="w-6 h-6" />
+          Multi-Directory Video Player
+        </h1>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* File Browser */}
-        <div className="lg:col-span-1">
-          <FileList
-            selectedDirectory={selectedDirectory}
+        <div>
+          <MultiDirectoryList
+            title="Video Library"
+            directories={videoDirectories}
             files={videoFiles}
             isLoading={isLoading}
             lastRefresh={lastRefresh}
             currentFile={currentFile}
-            onSelectDirectory={selectDirectory}
+            onAddDirectory={handleAddDirectory}
+            onRemoveDirectory={removeVideoDirectory}
             onRefresh={refreshFiles}
             onFileSelect={handleDirectoryFileSelect}
           />
@@ -413,20 +346,7 @@ export function VideoPlayer({ onBack }: VideoPlayerProps) {
                 <div className="space-y-4">
                   <div 
                     ref={videoContainerRef}
-                    className={`relative ${isFullscreen ? 'fixed inset-0 z-[2147483640] bg-black flex items-center justify-center' : ''}`}
-                    onMouseMove={handleMouseMove}
-                    style={isFullscreen ? {
-                      position: 'fixed',
-                      top: 0,
-                      left: 0,
-                      width: '100vw',
-                      height: '100vh',
-                      zIndex: 2147483640,
-                      backgroundColor: 'black',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    } : {}}
+                    className={`relative ${isFullscreen ? 'fixed inset-0 z-50 bg-black flex items-center justify-center' : ''}`}
                   >
                     <video
                       ref={videoRef}
@@ -452,96 +372,79 @@ export function VideoPlayer({ onBack }: VideoPlayerProps) {
                       onCanPlay={() => {
                         console.log('Video can play')
                       }}
-                      className={`${isFullscreen ? 'w-screen h-screen object-contain' : 'w-full max-h-96'} bg-black ${isFullscreen ? '' : 'rounded-lg'}`}
+                      className={`w-full ${isFullscreen ? 'h-full object-contain' : 'max-h-96'} bg-black rounded-lg`}
                       controls={false}
                       preload="metadata"
-                      onClick={() => isFullscreen && togglePlayPause()}
-                      style={isFullscreen ? {
-                        width: '100vw',
-                        height: '100vh',
-                        objectFit: 'contain'
-                      } : {}}
                     />
-                  </div>
+                    
+                    {/* Fullscreen Controls Overlay */}
+                    {isFullscreen && (
+                      <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+                        <div className="space-y-4">
+                          {/* Progress Bar */}
+                          <div className="space-y-2">
+                            <Slider
+                              value={[duration > 0 ? (currentTime / duration) * 100 : 0]}
+                              onValueChange={handleSeek}
+                              max={100}
+                              step={0.1}
+                              className="w-full"
+                            />
+                            <div className="flex justify-between text-sm text-white">
+                              <span>{formatTime(currentTime)}</span>
+                              <span>{formatTime(duration)}</span>
+                            </div>
+                          </div>
 
-                  {/* Fullscreen Controls - using Portal to render outside of normal DOM tree */}
-                  {isFullscreen && showControls && createPortal(
-                    <div 
-                      className="fixed inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/90 to-transparent transition-opacity duration-300 z-[2147483647]"
-                      style={{
-                        position: 'fixed',
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        zIndex: 2147483647, // Maximum z-index
-                        pointerEvents: 'auto'
-                      }}
-                    >
-                      <div className="space-y-4 max-w-4xl mx-auto">
-                        {/* Progress Bar */}
-                        <div className="space-y-2">
-                          <Slider
-                            value={[duration > 0 ? (currentTime / duration) * 100 : 0]}
-                            onValueChange={handleSeek}
-                            max={100}
-                            step={0.1}
-                            className="w-full"
-                          />
-                          <div className="flex justify-between text-sm text-white">
-                            <span>{formatTime(currentTime)}</span>
-                            <span>{formatTime(duration)}</span>
+                          {/* Control Buttons */}
+                          <div className="flex items-center justify-center gap-4">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => skipTime(-10)}
+                              disabled={!currentFile}
+                              className="bg-black/50 border-white/20 text-white hover:bg-white/20"
+                            >
+                              <SkipBack className="w-4 h-4" />
+                            </Button>
+                            
+                            <Button
+                              size="icon"
+                              onClick={togglePlayPause}
+                              disabled={!currentFile}
+                              className="w-12 h-12 bg-white text-black hover:bg-white/90"
+                            >
+                              {isPlaying ? (
+                                <Pause className="w-6 h-6" />
+                              ) : (
+                                <Play className="w-6 h-6" />
+                              )}
+                            </Button>
+                            
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => skipTime(10)}
+                              disabled={!currentFile}
+                              className="bg-black/50 border-white/20 text-white hover:bg-white/20"
+                            >
+                              <SkipForward className="w-4 h-4" />
+                            </Button>
+
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={toggleFullscreen}
+                              disabled={!currentFile}
+                              className="bg-black/50 border-white/20 text-white hover:bg-white/20"
+                            >
+                              <Minimize className="w-4 h-4" />
+                            </Button>
                           </div>
                         </div>
-
-                        {/* Control Buttons */}
-                        <div className="flex items-center justify-center gap-4">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => skipTime(-10)}
-                            disabled={!currentFile}
-                            className="bg-black/50 border-white/20 text-white hover:bg-white/20"
-                          >
-                            <SkipBack className="w-4 h-4" />
-                          </Button>
-                          
-                          <Button
-                            size="icon"
-                            onClick={togglePlayPause}
-                            disabled={!currentFile}
-                            className="w-12 h-12 bg-white text-black hover:bg-white/90"
-                          >
-                            {isPlaying ? (
-                              <Pause className="w-6 h-6" />
-                            ) : (
-                              <Play className="w-6 h-6" />
-                            )}
-                          </Button>
-                          
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => skipTime(10)}
-                            disabled={!currentFile}
-                            className="bg-black/50 border-white/20 text-white hover:bg-white/20"
-                          >
-                            <SkipForward className="w-4 h-4" />
-                          </Button>
-
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={toggleFullscreen}
-                            disabled={!currentFile}
-                            className="bg-black/50 border-white/20 text-white hover:bg-white/20"
-                          >
-                            <Minimize className="w-4 h-4" />
-                          </Button>
-                        </div>
                       </div>
-                    </div>,
-                    document.body
-                  )}
+                    )}
+                  </div>
 
                   {/* Regular Controls (Non-fullscreen) */}
                   {!isFullscreen && (
@@ -654,7 +557,7 @@ export function VideoPlayer({ onBack }: VideoPlayerProps) {
                 <div className="text-center py-12 text-muted-foreground">
                   <div className="text-6xl mb-4">🎬</div>
                   <p className="text-lg">No video file selected</p>
-                  <p className="text-sm">Select a directory or upload a video file to start playing</p>
+                  <p className="text-sm">Add directories or upload a video file to start playing</p>
                 </div>
               )}
             </CardContent>
