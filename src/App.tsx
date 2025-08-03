@@ -28,14 +28,14 @@ function App() {
             <div
               className={cn(
                 "h-screen overflow-auto border-t bg-background pb-8",
-              // "scrollbar-none"
-              "scrollbar scrollbar-track-transparent scrollbar-thumb-accent scrollbar-thumb-rounded-md"
-            )}
-          >
-            <DashboardPage />
+                // "scrollbar-none"
+                "scrollbar scrollbar-track-transparent scrollbar-thumb-accent scrollbar-thumb-rounded-md"
+              )}
+            >
+              <DashboardPage />
+            </div>
           </div>
-        </div>
-        <TailwindIndicator />
+          <TailwindIndicator />
         </PlaylistProvider>
       </MediaDirectoryProvider>
     </ThemeProvider>

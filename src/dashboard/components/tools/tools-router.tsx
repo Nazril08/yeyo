@@ -9,6 +9,8 @@ import FacebookDownloader from '@/dashboard/components/facebook-downloader';
 import InstagramDownloader from '@/dashboard/components/instagram-downloader';
 import AnimagineXL from '@/dashboard/components/animagine-xl';
 import YoutubeSummarize from '@/dashboard/components/youtube-summarize';
+import YouTubeMP3Downloader from '@/dashboard/components/youtube-mp3-downloader';
+import YouTubeMP3V2Downloader from '@/dashboard/components/youtube-mp3-v2-downloader';
 
 interface ToolsRouterProps {
   currentTool: string;
@@ -36,6 +38,14 @@ export function ToolsRouter({ currentTool, onBack }: ToolsRouterProps) {
     'youtube': {
       component: <YouTubeDownloader />,
       title: 'YouTube Downloader'
+    },
+    'youtube-mp3': {
+      component: <YouTubeMP3Downloader />,
+      title: 'YouTube MP3 Downloader'
+    },
+    'youtube-mp3-v2': {
+      component: <YouTubeMP3V2Downloader />,
+      title: 'YouTube MP3 v2 Downloader'
     },
     'facebook': {
       component: <FacebookDownloader />,

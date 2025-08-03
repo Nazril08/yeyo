@@ -17,6 +17,25 @@ interface ToolsOverviewProps {
 
 export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOverviewProps) {
   const tools: Tool[] = [
+    // YouTube Tools Group - berurutan
+    {
+      id: 'youtube',
+      name: 'YouTube Downloader',
+      title: 'YouTube Videos',
+      description: 'Download videos and audio from YouTube',
+      category: 'download',
+      icon: (
+        <div className="w-4 h-4 bg-red-600 rounded-lg flex items-center justify-center">
+          <svg
+            viewBox="0 0 24 24"
+            fill="white"
+            className="w-3 h-3"
+          >
+            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+          </svg>
+        </div>
+      )
+    },
     {
       id: 'yt-mp4',
       name: 'YT MP4 Downloader',
@@ -40,6 +59,60 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
       )
     },
     {
+      id: 'youtube-mp3',
+      name: 'YouTube MP3 Downloader',
+      title: 'YouTube to MP3',
+      description: 'Download audio from YouTube as MP3',
+      category: 'download',
+      icon: (
+        <div className="w-4 h-4 bg-green-600 rounded-lg flex items-center justify-center">
+          <svg
+            viewBox="0 0 24 24"
+            fill="white"
+            className="w-3 h-3"
+          >
+            <path d="M9 18V5l12-2v13M6 15v-2c0-1 1-2 2-2s2 1 2 2v2c0 1-1 2-2 2s-2-1-2-2"/>
+            <circle cx="8" cy="15" r="1"/>
+            <circle cx="19" cy="14" r="1"/>
+          </svg>
+        </div>
+      )
+    },
+    {
+      id: 'youtube-mp3-v2',
+      name: 'YouTube MP3 v2 Downloader',
+      title: 'YouTube to MP3 v2',
+      description: 'Download audio from YouTube as MP3 with quality options',
+      category: 'download',
+      icon: (
+        <div className="w-4 h-4 bg-emerald-600 rounded-lg flex items-center justify-center">
+          <svg
+            viewBox="0 0 24 24"
+            fill="white"
+            className="w-3 h-3"
+          >
+            <path d="M9 18V5l12-2v13M6 15v-2c0-1 1-2 2-2s2 1 2 2v2c0 1-1 2-2 2s-2-1-2-2"/>
+            <circle cx="8" cy="15" r="1"/>
+            <circle cx="19" cy="14" r="1"/>
+            <path d="M12 8l2 2-2 2"/>
+          </svg>
+        </div>
+      )
+    },
+    // Other Download Tools
+    {
+      id: 'tiktok',
+      name: 'TikTok Downloader',
+      title: 'TikTok Videos',
+      description: 'Download videos and audio from TikTok',
+      category: 'download',
+      icon: (
+        <div className="w-4 h-4 bg-black rounded-lg flex items-center justify-center">
+          <span className="text-white text-xs font-bold">T</span>
+        </div>
+      )
+    },
+    {
       id: 'spotify',
       name: 'Spotify Downloader',
       title: 'Spotify to MP3',
@@ -60,36 +133,6 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
       icon: (
         <div className="w-4 h-4 bg-black rounded-lg flex items-center justify-center">
           <span className="text-white text-xs font-bold">@</span>
-        </div>
-      )
-    },
-    {
-      id: 'tiktok',
-      name: 'TikTok Downloader',
-      title: 'TikTok Videos',
-      description: 'Download videos and audio from TikTok',
-      category: 'download',
-      icon: (
-        <div className="w-4 h-4 bg-black rounded-lg flex items-center justify-center">
-          <span className="text-white text-xs font-bold">T</span>
-        </div>
-      )
-    },
-    {
-      id: 'youtube',
-      name: 'YouTube Downloader',
-      title: 'YouTube Videos',
-      description: 'Download videos and audio from YouTube',
-      category: 'download',
-      icon: (
-        <div className="w-4 h-4 bg-red-600 rounded-lg flex items-center justify-center">
-          <svg
-            viewBox="0 0 24 24"
-            fill="white"
-            className="w-3 h-3"
-          >
-            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-          </svg>
         </div>
       )
     },
