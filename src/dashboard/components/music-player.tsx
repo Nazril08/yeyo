@@ -557,9 +557,9 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
         <h2 className="text-2xl font-bold">Music Player</h2>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-2 gap-6">
         {/* File Browser & Playlists */}
-        <div className="lg:col-span-1">
+        <div className="xl:col-span-2 lg:col-span-1">
           <Tabs defaultValue="files" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="files">Files</TabsTrigger>
@@ -589,7 +589,7 @@ export function MusicPlayer({ onBack }: MusicPlayerProps) {
         </div>
 
         {/* Music Player */}
-        <div className="lg:col-span-2">
+        <div className="xl:col-span-3 lg:col-span-1">
           <Card>
             <CardHeader>
               <CardTitle>Music Player</CardTitle>
