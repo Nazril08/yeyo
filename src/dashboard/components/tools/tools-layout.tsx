@@ -9,7 +9,7 @@ interface ToolsLayoutProps {
 
 export function ToolsLayout({ className }: ToolsLayoutProps) {
   const [currentTool, setCurrentTool] = useState<string | null>(null);
-  const [toolsSubPage, setToolsSubPage] = useState<'overview' | 'download' | 'ai'>('overview');
+  const [toolsSubPage, setToolsSubPage] = useState<'overview' | 'download' | 'ai' | 'image'>('overview');
 
   const handleToolSelect = (toolId: string) => {
     setCurrentTool(toolId);
@@ -58,6 +58,15 @@ export function ToolsLayout({ className }: ToolsLayoutProps) {
         >
           AI
         </button>
+        <button
+          onClick={() => setToolsSubPage("image")}
+          className={cn(
+            "text-sm font-medium transition-colors hover:text-primary",
+            toolsSubPage === "image" ? "text-foreground" : "text-muted-foreground"
+          )}
+        >
+          Image
+        </button>
       </div>
       
       {/* Tools Content */}
@@ -71,6 +80,10 @@ export function ToolsLayout({ className }: ToolsLayoutProps) {
       
       {toolsSubPage === "ai" && (
         <ToolsOverview onToolSelect={handleToolSelect} category="ai" />
+      )}
+      
+      {toolsSubPage === "image" && (
+        <ToolsOverview onToolSelect={handleToolSelect} category="image" />
       )}
     </div>
   );

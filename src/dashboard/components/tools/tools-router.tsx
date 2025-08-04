@@ -11,6 +11,7 @@ import AnimagineXL from '@/dashboard/components/animagine-xl';
 import YoutubeSummarize from '@/dashboard/components/youtube-summarize';
 import YouTubeMP3Downloader from '@/dashboard/components/youtube-mp3-downloader';
 import YouTubeMP3V2Downloader from '@/dashboard/components/youtube-mp3-v2-downloader';
+import { RemoveBackgroundAdvanced } from '@/dashboard/components/tools/remove-background-advanced';
 
 interface ToolsRouterProps {
   currentTool: string;
@@ -62,6 +63,10 @@ export function ToolsRouter({ currentTool, onBack }: ToolsRouterProps) {
     'youtube-summarize': {
       component: <YoutubeSummarize />,
       title: 'YouTube Summarize - AI Video Summary'
+    },
+    'remove-background-advanced': {
+      component: <RemoveBackgroundAdvanced />,
+      title: 'Remove Background Advanced - AI Background Remover'
     }
   };
 
