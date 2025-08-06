@@ -7,6 +7,7 @@ import TeamSwitcher from "@/dashboard/components/team-switcher"
 import { UserNav } from "@/dashboard/components/user-nav"
 import { ToolsLayout } from "@/dashboard/components/tools"
 import { MediaPlayer } from "@/dashboard/components/media-player"
+import { FFmpegLayout } from "@/dashboard/components/ffmpeg/ffmpeg-layout"
 
 export default function DashboardPage() {
   const [currentPage, setCurrentPage] = useState("overview")
@@ -51,6 +52,10 @@ export default function DashboardPage() {
 
           {currentPage === "media-player" && (
             <MediaPlayer />
+          )}
+
+          {currentPage === "ffmpeg" && (
+            <FFmpegLayout />
           )}
         </div>
       </div>

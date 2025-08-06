@@ -6,13 +6,13 @@ interface Tool {
   name: string;
   title: string;
   description: string;
-  category: 'download' | 'ai' | 'image';
+  category: 'download' | 'ai' | 'image' | 'utilities';
   icon: React.ReactNode;
 }
 
 interface ToolsOverviewProps {
   onToolSelect: (toolId: string) => void;
-  category?: 'overview' | 'download' | 'ai' | 'image';
+  category?: 'overview' | 'download' | 'ai' | 'image' | 'utilities';
 }
 
 export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOverviewProps) {
@@ -226,6 +226,27 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
             <path d="M9 9h6v6h-6z" fill="none" stroke="white" strokeWidth="1"/>
             <path d="M15 9l6-6m0 6l-6-6"/>
+          </svg>
+        </div>
+      )
+    },
+    {
+      id: 'media-looper',
+      name: 'Media Looper',
+      title: 'Loop Video/Audio',
+      description: 'Create long-duration media by looping short files multiple times',
+      category: 'utilities',
+      icon: (
+        <div className="w-4 h-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+          <svg
+            viewBox="0 0 24 24"
+            fill="white"
+            className="w-3 h-3"
+          >
+            <path d="M17 1l4 4-4 4"/>
+            <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+            <path d="M7 23l-4-4 4-4"/>
+            <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
           </svg>
         </div>
       )

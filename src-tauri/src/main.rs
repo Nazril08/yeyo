@@ -8,6 +8,7 @@ use std::fs::{self, File, DirEntry};
 use std::io::copy;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+use std::process::Command;
 use reqwest;
 use tokio;
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,9 @@ struct MediaFile {
     #[serde(rename = "type")]
     file_type: String,
 }
+
+
+
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -154,6 +158,161 @@ async fn toggle_fullscreen(window: Window) -> Result<(), String> {
     }
 }
 
+
+
+#[tauri::command]
+async fn get_media_duration(file_path: String) -> Result<f64, String> {
+    let output = Command::new("ffprobe")
+        .args([
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
+            "-show_streams",
+            &file_path
+        ])
+        .output()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "FFprobe not found. Please install FFmpeg and add it to your PATH.".to_string()
+            } else {
+                format!("Failed to execute ffprobe: {}", e)
+            }
+        })?;
+
+    if !output.status.success() {
+        return Err("Failed to get file information".to_string());
+    }
+
+    let json_str = String::from_utf8(output.stdout)
+        .map_err(|e| format!("Failed to parse ffprobe output: {}", e))?;
+    
+    let parsed: serde_json::Value = serde_json::from_str(&json_str)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    
+    let duration = parsed["format"]["duration"]
+        .as_str()
+        .and_then(|s| s.parse::<f64>().ok())
+        .ok_or("Could not parse duration")?;
+    
+    Ok(duration)
+}
+
+#[tauri::command]
+async fn open_file_location(file_path: String) -> Result<(), String> {
+    let path = Path::new(&file_path);
+    let dir = path.parent().unwrap_or(path);
+    
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg(dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open file location: {}", e))?;
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open file location: {}", e))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("xdg-open")
+            .arg(dir)
+            .spawn()
+            .map_err(|e| format!("Failed to open file location: {}", e))?;
+    }
+    
+    Ok(())
+}
+
+// Check if FFmpeg is available
+#[tauri::command]
+async fn check_ffmpeg() -> Result<bool, String> {
+    let output = Command::new("ffmpeg")
+        .arg("-version")
+        .output();
+    match output {
+        Ok(result) => Ok(result.status.success()),
+        Err(_) => Ok(false),
+    }
+}
+
+// Calculate how many loops are needed
+#[tauri::command]
+fn calculate_loops(file_duration: f64, target_duration: f64) -> u32 {
+    if file_duration <= 0.0 {
+        return 0;
+    }
+    (target_duration / file_duration).ceil() as u32
+}
+
+// Process the file with FFmpeg
+#[tauri::command]
+async fn loop_media(input_path: String, output_directory: String, target_duration: f64) -> Result<String, String> {
+    let file_duration = get_media_duration(input_path.clone()).await?;
+    let loops_needed = calculate_loops(file_duration, target_duration);
+    
+    if loops_needed == 0 {
+        return Err("Invalid file duration".to_string());
+    }
+    
+    if loops_needed == 1 {
+        return Err("Target duration must be longer than original".to_string());
+    }
+    
+    // Generate output path with Loop_ prefix
+    let input_path_buf = Path::new(&input_path);
+    let file_name = input_path_buf.file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("Invalid input file name")?;
+    
+    let output_dir = if output_directory.is_empty() {
+        // If no output directory specified, use same directory as input
+        input_path_buf.parent()
+            .ok_or("Could not determine parent directory")?
+    } else {
+        Path::new(&output_directory)
+    };
+    
+    let loop_filename = format!("Loop_{}", file_name);
+    let final_output_path = output_dir.join(loop_filename);
+    
+    // Create output directory if it doesn't exist
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    
+    // FFmpeg command to loop the video/audio
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args([
+        "-y", // Overwrite output file
+        "-stream_loop", &(loops_needed - 1).to_string(), // Loop count (n-1 because original plays once)
+        "-i", &input_path,
+        "-t", &target_duration.to_string(), // Limit output duration
+        "-c", "copy", // Copy streams without re-encoding when possible
+        &final_output_path.to_string_lossy()
+    ]);
+    
+    let output = cmd.output()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "FFmpeg not found. Please install FFmpeg and add it to your PATH.".to_string()
+            } else {
+                format!("Failed to execute ffmpeg: {}", e)
+            }
+        })?;
+    
+    if output.status.success() {
+        Ok(final_output_path.to_string_lossy().to_string())
+    } else {
+        let error_msg = String::from_utf8_lossy(&output.stderr);
+        Err(format!("FFmpeg error: {}", error_msg))
+    }
+}
+
 async fn download_file_internal(url: String, path: String) -> Result<(), Box<dyn std::error::Error>> {
     // Create HTTP client
     let client = reqwest::Client::new();
@@ -183,7 +342,12 @@ fn main() {
             select_directory, 
             scan_media_files, 
             get_file_url,
-            toggle_fullscreen
+            toggle_fullscreen,
+            get_media_duration,
+            open_file_location,
+            check_ffmpeg,
+            calculate_loops,
+            loop_media
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

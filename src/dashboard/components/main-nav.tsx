@@ -44,6 +44,15 @@ export function MainNav({
       >
         Media Player
       </button>
+      <button
+        onClick={() => setCurrentPage("ffmpeg")}
+        className={cn(
+          "text-sm font-medium transition-colors hover:text-primary",
+          currentPage === "ffmpeg" ? "text-foreground" : "text-muted-foreground"
+        )}
+      >
+        FFmpeg
+      </button>
     </nav>
   )
 }
