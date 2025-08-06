@@ -71,6 +71,19 @@ struct AudioConversionSettings {
     extract_from_video: Option<bool>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct NoiseReductionSettings {
+    input_path: String,
+    output_dir: String,
+    preset: String,
+    algorithm: String,
+    noise_reduction: f32,
+    noise_floor: f32,
+    highpass_freq: Option<f32>,
+    lowpass_freq: Option<f32>,
+    notch_freq: Option<f32>,
+}
+
 
 
 
@@ -702,6 +715,114 @@ async fn convert_audio(
     Ok(output_path_str)
 }
 
+#[tauri::command]
+async fn reduce_noise(settings: NoiseReductionSettings) -> Result<String, String> {
+    let input_path = settings.input_path.clone();
+    let output_dir = settings.output_dir;
+    
+    // Generate output filename
+    let input_pathbuf = Path::new(&input_path);
+    let file_stem = input_pathbuf.file_stem()
+        .ok_or("Invalid input file")?
+        .to_string_lossy();
+    let extension = input_pathbuf.extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("wav");
+    
+    let output_filename = format!("{}_denoised.{}", file_stem, extension);
+    let output_path = Path::new(&output_dir).join(output_filename);
+    let output_path_str = output_path.to_string_lossy().to_string();
+
+    // Build FFmpeg arguments based on algorithm
+    let mut args = vec![
+        "-i".to_string(),
+        input_path,
+        "-y".to_string(),
+    ];
+
+    // Build audio filter chain
+    let mut filters = Vec::new();
+
+    match settings.algorithm.as_str() {
+        "afftdn" => {
+            filters.push(format!("afftdn=nr={}:nf={}", settings.noise_reduction, settings.noise_floor));
+        },
+        "anlmdn" => {
+            filters.push(format!("anlmdn=s={}:o={}", settings.noise_reduction, settings.noise_floor.abs()));
+        },
+        "highpass" => {
+            if let Some(freq) = settings.highpass_freq {
+                filters.push(format!("highpass=f={}", freq));
+            }
+        },
+        "combined" => {
+            // High-pass filter to remove low-frequency noise
+            if let Some(freq) = settings.highpass_freq {
+                filters.push(format!("highpass=f={}", freq));
+            }
+            // FFT denoising
+            filters.push(format!("afftdn=nr={}:nf={}", settings.noise_reduction, settings.noise_floor));
+            // Low-pass filter if specified
+            if let Some(freq) = settings.lowpass_freq {
+                filters.push(format!("lowpass=f={}", freq));
+            }
+        },
+        "afftdn+highpass+lowpass" => {
+            // Speech enhancement preset
+            if let Some(freq) = settings.highpass_freq {
+                filters.push(format!("highpass=f={}", freq));
+            }
+            filters.push(format!("afftdn=nr={}:nf={}", settings.noise_reduction, settings.noise_floor));
+            if let Some(freq) = settings.lowpass_freq {
+                filters.push(format!("lowpass=f={}", freq));
+            }
+        },
+        "highpass+notch" => {
+            // Hum removal preset
+            if let Some(freq) = settings.highpass_freq {
+                filters.push(format!("highpass=f={}", freq));
+            }
+            if let Some(freq) = settings.notch_freq {
+                filters.push(format!("bandreject=f={}:w=10", freq));
+            }
+        },
+        _ => {
+            // Default to afftdn
+            filters.push(format!("afftdn=nr={}:nf={}", settings.noise_reduction, settings.noise_floor));
+        }
+    }
+
+    // Add notch filter for specific frequency removal if specified
+    if let Some(freq) = settings.notch_freq {
+        if !settings.algorithm.contains("notch") {
+            filters.push(format!("bandreject=f={}:w=10", freq));
+        }
+    }
+
+    // Join filters with comma
+    if !filters.is_empty() {
+        args.push("-af".to_string());
+        args.push(filters.join(","));
+    }
+
+    // Add output path
+    args.push(output_path_str.clone());
+
+    // Execute FFmpeg command
+    let mut cmd = create_hidden_command("ffmpeg");
+    cmd.args(&args);
+
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to execute ffmpeg: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffmpeg failed: {}", stderr));
+    }
+
+    Ok(output_path_str)
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -719,7 +840,8 @@ fn main() {
             get_video_info,
             resize_video,
             convert_video,
-            convert_audio
+            convert_audio,
+            reduce_noise
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
