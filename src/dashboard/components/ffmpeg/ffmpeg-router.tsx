@@ -4,6 +4,7 @@ import VideoConverter from './video-converter';
 import VideoConverterNew from './video-converter-new';
 import MediaLooper from './media-looper';
 import VideoResizer from './video-resizer';
+import NoiseReducer from './noise-reducer';
 // Import komponen lain nanti saat dibutuhkan
 
 interface FFmpegRouterProps {
@@ -20,6 +21,10 @@ export function FFmpegRouter({ currentTool, onBack }: FFmpegRouterProps) {
     'video-resizer': {
       component: <VideoResizer />,
       title: 'Video Resizer'
+    },
+    'noise-reducer': {
+      component: <NoiseReducer />,
+      title: 'Noise Reducer'
     },
     'ffmpeg-video-converter': {
       component: <VideoConverter />,

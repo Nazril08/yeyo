@@ -59,6 +59,24 @@ export function FFmpegOverview({ onToolSelect, category = 'overview' }: FFmpegOv
       )
     },
     {
+      id: 'noise-reducer',
+      name: 'Noise Reducer',
+      title: 'Remove Background Noise',
+      description: 'Advanced noise reduction using FFT, filters, and AI algorithms',
+      category: 'audio',
+      icon: (
+        <div className="w-4 h-4 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
+          <svg
+            viewBox="0 0 24 24"
+            fill="white"
+            className="w-3 h-3"
+          >
+            <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/>
+          </svg>
+        </div>
+      )
+    },
+    {
       id: 'media-looper',
       name: 'Media Looper',
       title: 'Loop Video/Audio',
