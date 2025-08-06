@@ -4,15 +4,27 @@
     windows_subsystem = "windows"
 )]
 
-use std::fs::{self, File, DirEntry};
+use std::fs::{self, File};
 use std::io::copy;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::SystemTime;
 use std::process::Command;
 use reqwest;
-use tokio;
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, Window};
+use tauri::Window;
+
+// Helper function to create Command with hidden console window on Windows
+fn create_hidden_command(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW flag
+    }
+    
+    cmd
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct MediaFile {
@@ -22,6 +34,41 @@ struct MediaFile {
     modified: u64,
     #[serde(rename = "type")]
     file_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct VideoInfo {
+    width: u32,
+    height: u32,
+    duration: f64,
+    fps: f64,
+    codec: String,
+    bitrate: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ConversionSettings {
+    #[serde(rename = "videoCodec")]
+    video_codec: String,
+    #[serde(rename = "audioCodec")]
+    audio_codec: String,
+    crf: Option<u32>,
+    preset: Option<String>,
+    bitrate: Option<String>,
+    #[serde(rename = "fastMode")]
+    fast_mode: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct AudioConversionSettings {
+    codec: String,
+    bitrate: Option<String>,
+    #[serde(rename = "sampleRate")]
+    sample_rate: Option<u32>,
+    channels: Option<u32>,
+    compression: Option<u32>,
+    #[serde(rename = "extractFromVideo")]
+    extract_from_video: Option<bool>,
 }
 
 
@@ -162,7 +209,7 @@ async fn toggle_fullscreen(window: Window) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_media_duration(file_path: String) -> Result<f64, String> {
-    let output = Command::new("ffprobe")
+    let output = create_hidden_command("ffprobe")
         .args([
             "-v", "quiet",
             "-print_format", "json",
@@ -232,7 +279,7 @@ async fn open_file_location(file_path: String) -> Result<(), String> {
 // Check if FFmpeg is available
 #[tauri::command]
 async fn check_ffmpeg() -> Result<bool, String> {
-    let output = Command::new("ffmpeg")
+    let output = create_hidden_command("ffmpeg")
         .arg("-version")
         .output();
     match output {
@@ -286,7 +333,7 @@ async fn loop_media(input_path: String, output_directory: String, target_duratio
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
     
     // FFmpeg command to loop the video/audio
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = create_hidden_command("ffmpeg");
     cmd.args([
         "-y", // Overwrite output file
         "-stream_loop", &(loops_needed - 1).to_string(), // Loop count (n-1 because original plays once)
@@ -334,6 +381,327 @@ async fn download_file_internal(url: String, path: String) -> Result<(), Box<dyn
     Ok(())
 }
 
+#[tauri::command]
+async fn get_video_info(file_path: String) -> Result<VideoInfo, String> {
+    let output = create_hidden_command("ffprobe")
+        .args([
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
+            "-show_streams",
+            &file_path
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute ffprobe: {}", e))?;
+
+    if !output.status.success() {
+        return Err("ffprobe failed to analyze the video".to_string());
+    }
+
+    let json_str = String::from_utf8(output.stdout)
+        .map_err(|e| format!("Failed to parse ffprobe output: {}", e))?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&json_str)
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+    // Find video stream
+    let streams = parsed["streams"].as_array()
+        .ok_or("No streams found")?;
+    
+    let video_stream = streams.iter()
+        .find(|stream| stream["codec_type"] == "video")
+        .ok_or("No video stream found")?;
+
+    let width = video_stream["width"].as_u64().unwrap_or(0) as u32;
+    let height = video_stream["height"].as_u64().unwrap_or(0) as u32;
+    let fps_str = video_stream["r_frame_rate"].as_str().unwrap_or("0/1");
+    let codec = video_stream["codec_name"].as_str().unwrap_or("unknown").to_string();
+    
+    // Parse FPS fraction
+    let fps = if let Some((num, den)) = fps_str.split_once('/') {
+        let num: f64 = num.parse().unwrap_or(0.0);
+        let den: f64 = den.parse().unwrap_or(1.0);
+        if den != 0.0 { num / den } else { 0.0 }
+    } else {
+        fps_str.parse().unwrap_or(0.0)
+    };
+
+    let duration = parsed["format"]["duration"].as_str()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(0.0);
+
+    let bitrate = parsed["format"]["bit_rate"].as_str()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0);
+
+    Ok(VideoInfo {
+        width,
+        height,
+        duration,
+        fps,
+        codec,
+        bitrate,
+    })
+}
+
+#[tauri::command]
+async fn resize_video(
+    input_path: String,
+    output_width: u32,
+    output_height: u32,
+    maintain_aspect_ratio: bool,
+    quality: u32,
+    output_format: String,
+) -> Result<String, String> {
+    // Generate output path
+    let input_pathbuf = Path::new(&input_path);
+    let file_stem = input_pathbuf.file_stem()
+        .ok_or("Invalid input file")?
+        .to_string_lossy();
+    let output_dir = input_pathbuf.parent()
+        .ok_or("Cannot determine output directory")?;
+    
+    let output_path = output_dir.join(format!(
+        "{}_resized_{}x{}.{}",
+        file_stem,
+        output_width,
+        output_height,
+        output_format
+    ));
+
+    let output_path_str = output_path.to_string_lossy().to_string();
+
+    // Build scale filter
+    let scale_filter = if maintain_aspect_ratio {
+        format!("scale={}:{}:force_original_aspect_ratio=decrease", output_width, output_height)
+    } else {
+        format!("scale={}:{}", output_width, output_height)
+    };
+
+    // Calculate CRF value from quality (higher quality = lower CRF)
+    let crf = 51 - (quality * 51 / 100);
+
+    let output = create_hidden_command("ffmpeg")
+        .args([
+            "-i", &input_path,
+            "-vf", &scale_filter,
+            "-c:v", "libx264",
+            "-crf", &crf.to_string(),
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-y", // Overwrite output file
+            &output_path_str
+        ])
+        .output()
+        .map_err(|e| format!("Failed to execute ffmpeg: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffmpeg failed: {}", stderr));
+    }
+
+    Ok(output_path_str)
+}
+
+#[tauri::command]
+async fn convert_video(
+    input_path: String,
+    output_format: String,
+    output_directory: Option<String>,
+    settings: ConversionSettings,
+) -> Result<String, String> {
+    // Generate output path
+    let input_pathbuf = Path::new(&input_path);
+    let file_stem = input_pathbuf.file_stem()
+        .ok_or("Invalid input file")?
+        .to_string_lossy();
+    
+    let output_dir = if let Some(dir) = output_directory {
+        Path::new(&dir).to_path_buf()
+    } else {
+        input_pathbuf.parent()
+            .ok_or("Cannot determine output directory")?
+            .to_path_buf()
+    };
+    
+    let output_path = output_dir.join(format!(
+        "{}_converted.{}",
+        file_stem,
+        output_format
+    ));
+
+    let output_path_str = output_path.to_string_lossy().to_string();
+
+    // Check for fast mode (container change only)
+    if settings.fast_mode.unwrap_or(false) || settings.video_codec == "copy" {
+        let output = create_hidden_command("ffmpeg")
+            .args([
+                "-i", &input_path,
+                "-c", "copy",
+                "-y", // Overwrite output file
+                &output_path_str
+            ])
+            .output()
+            .map_err(|e| format!("Failed to execute ffmpeg: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("ffmpeg failed: {}", stderr));
+        }
+
+        return Ok(output_path_str);
+    }
+
+    // Build ffmpeg command arguments
+    let mut args = vec![
+        "-i".to_string(),
+        input_path,
+        "-c:v".to_string(),
+        settings.video_codec.clone(),
+        "-c:a".to_string(),
+        settings.audio_codec.clone(),
+    ];
+
+    // Add quality settings
+    if let Some(crf) = settings.crf {
+        if settings.video_codec == "libx264" || settings.video_codec == "libx265" {
+            args.push("-crf".to_string());
+            args.push(crf.to_string());
+        }
+    }
+
+    // Add preset
+    if let Some(preset) = settings.preset {
+        if settings.video_codec == "libx264" || settings.video_codec == "libx265" {
+            args.push("-preset".to_string());
+            args.push(preset);
+        }
+    }
+
+    // Add bitrate if specified
+    if let Some(bitrate) = settings.bitrate {
+        if !bitrate.is_empty() {
+            args.push("-b:v".to_string());
+            args.push(bitrate);
+        }
+    }
+
+    // Add audio bitrate
+    args.push("-b:a".to_string());
+    args.push("128k".to_string());
+
+    // Add overwrite flag and output path
+    args.push("-y".to_string());
+    args.push(output_path_str.clone());
+
+    // Convert Vec<String> to Vec<&str> for args
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    let output = create_hidden_command("ffmpeg")
+        .args(args_refs)
+        .output()
+        .map_err(|e| format!("Failed to execute ffmpeg: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffmpeg failed: {}", stderr));
+    }
+
+    Ok(output_path_str)
+}
+
+#[tauri::command]
+async fn convert_audio(
+    input_path: String,
+    output_format: String,
+    output_directory: Option<String>,
+    settings: AudioConversionSettings,
+) -> Result<String, String> {
+    // Generate output path
+    let input_pathbuf = Path::new(&input_path);
+    let file_stem = input_pathbuf.file_stem()
+        .ok_or("Invalid input file")?
+        .to_string_lossy();
+    
+    let output_dir = if let Some(dir) = output_directory {
+        Path::new(&dir).to_path_buf()
+    } else {
+        input_pathbuf.parent()
+            .ok_or("Cannot determine output directory")?
+            .to_path_buf()
+    };
+    
+    let output_path = output_dir.join(format!(
+        "{}_converted.{}",
+        file_stem,
+        output_format
+    ));
+
+    let output_path_str = output_path.to_string_lossy().to_string();
+
+    // Build ffmpeg command arguments
+    let mut args = vec![
+        "-i".to_string(),
+        input_path,
+    ];
+
+    // Add audio codec
+    args.push("-c:a".to_string());
+    args.push(settings.codec.clone());
+
+    // Add audio-specific settings
+    if let Some(bitrate) = settings.bitrate {
+        if !bitrate.is_empty() {
+            args.push("-b:a".to_string());
+            args.push(bitrate);
+        }
+    }
+
+    // Add sample rate
+    if let Some(sample_rate) = settings.sample_rate {
+        args.push("-ar".to_string());
+        args.push(sample_rate.to_string());
+    }
+
+    // Add channels
+    if let Some(channels) = settings.channels {
+        args.push("-ac".to_string());
+        args.push(channels.to_string());
+    }
+
+    // Add compression level for FLAC
+    if settings.codec == "flac" {
+        if let Some(compression) = settings.compression {
+            args.push("-compression_level".to_string());
+            args.push(compression.to_string());
+        }
+    }
+
+    // If extracting from video, disable video stream
+    if settings.extract_from_video.unwrap_or(false) {
+        args.push("-vn".to_string());
+    }
+
+    // Add overwrite flag and output path
+    args.push("-y".to_string());
+    args.push(output_path_str.clone());
+
+    // Convert Vec<String> to Vec<&str> for args
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+    let output = create_hidden_command("ffmpeg")
+        .args(args_refs)
+        .output()
+        .map_err(|e| format!("Failed to execute ffmpeg: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ffmpeg failed: {}", stderr));
+    }
+
+    Ok(output_path_str)
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -347,7 +715,11 @@ fn main() {
             open_file_location,
             check_ffmpeg,
             calculate_loops,
-            loop_media
+            loop_media,
+            get_video_info,
+            resize_video,
+            convert_video,
+            convert_audio
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

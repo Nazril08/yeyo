@@ -18,6 +18,47 @@ interface FFmpegOverviewProps {
 export function FFmpegOverview({ onToolSelect, category = 'overview' }: FFmpegOverviewProps) {
   const ffmpegTools: FFmpegTool[] = [
     {
+      id: 'video-converter',
+      name: 'Video Converter',
+      title: 'Convert Video Formats',
+      description: 'Convert videos between different formats and codecs with batch processing',
+      category: 'video',
+      icon: (
+        <div className="w-4 h-4 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
+          <svg
+            viewBox="0 0 24 24"
+            fill="white"
+            className="w-3 h-3"
+          >
+            <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+            <circle cx="12" cy="13" r="3"/>
+            <path d="M17 8.5h.01"/>
+          </svg>
+        </div>
+      )
+    },
+    {
+      id: 'video-resizer',
+      name: 'Video Resizer',
+      title: 'Resize & Scale Video',
+      description: 'Resize videos to different resolutions with quality presets',
+      category: 'video',
+      icon: (
+        <div className="w-4 h-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+          <svg
+            viewBox="0 0 24 24"
+            fill="white"
+            className="w-3 h-3"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <path d="M9 9h6v6h-6z" fill="none" stroke="white" strokeWidth="1"/>
+            <path d="M15 9l3-3m0 3l-3-3"/>
+            <path d="M9 15l-3 3m0-3l3 3"/>
+          </svg>
+        </div>
+      )
+    },
+    {
       id: 'media-looper',
       name: 'Media Looper',
       title: 'Loop Video/Audio',

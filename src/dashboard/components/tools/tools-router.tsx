@@ -12,7 +12,6 @@ import YoutubeSummarize from '@/dashboard/components/youtube-summarize';
 import YouTubeMP3Downloader from '@/dashboard/components/youtube-mp3-downloader';
 import YouTubeMP3V2Downloader from '@/dashboard/components/youtube-mp3-v2-downloader';
 import { RemoveBackgroundAdvanced } from '@/dashboard/components/tools/remove-background-advanced';
-import { MediaLooper } from '@/dashboard/components/ffmpeg/media-looper';
 
 interface ToolsRouterProps {
   currentTool: string;
@@ -68,10 +67,6 @@ export function ToolsRouter({ currentTool, onBack }: ToolsRouterProps) {
     'remove-background-advanced': {
       component: <RemoveBackgroundAdvanced />,
       title: 'Remove Background Advanced - AI Background Remover'
-    },
-    'media-looper': {
-      component: <MediaLooper />,
-      title: 'Media Looper - Loop Video/Audio'
     }
   };
 

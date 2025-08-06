@@ -1,7 +1,9 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import VideoConverter from './video-converter';
+import VideoConverterNew from './video-converter-new';
 import MediaLooper from './media-looper';
+import VideoResizer from './video-resizer';
 // Import komponen lain nanti saat dibutuhkan
 
 interface FFmpegRouterProps {
@@ -11,6 +13,14 @@ interface FFmpegRouterProps {
 
 export function FFmpegRouter({ currentTool, onBack }: FFmpegRouterProps) {
   const toolComponents: Record<string, { component: React.ReactNode; title: string }> = {
+    'video-converter': {
+      component: <VideoConverterNew />,
+      title: 'Video Converter'
+    },
+    'video-resizer': {
+      component: <VideoResizer />,
+      title: 'Video Resizer'
+    },
     'ffmpeg-video-converter': {
       component: <VideoConverter />,
       title: 'FFmpeg Video Converter'

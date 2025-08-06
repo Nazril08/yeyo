@@ -229,27 +229,6 @@ export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOver
           </svg>
         </div>
       )
-    },
-    {
-      id: 'media-looper',
-      name: 'Media Looper',
-      title: 'Loop Video/Audio',
-      description: 'Create long-duration media by looping short files multiple times',
-      category: 'utilities',
-      icon: (
-        <div className="w-4 h-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-          <svg
-            viewBox="0 0 24 24"
-            fill="white"
-            className="w-3 h-3"
-          >
-            <path d="M17 1l4 4-4 4"/>
-            <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-            <path d="M7 23l-4-4 4-4"/>
-            <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-          </svg>
-        </div>
-      )
     }
   ];
 
