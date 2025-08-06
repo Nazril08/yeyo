@@ -4,15 +4,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Upload, Download, RotateCcw, Clock, File, FolderOpen } from 'lucide-react';
+import { Upload, Download, RotateCcw, Clock, File, FolderOpen, Settings } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { open } from '@tauri-apps/api/dialog';
 
 interface LoopSettings {
   targetDuration: number; // in seconds
   outputQuality: string;
+  useCustomDuration: boolean;
+  customHours: number;
+  customMinutes: number;
+  customSeconds: number;
 }
 
 interface FileInfo {
@@ -33,7 +38,11 @@ export function MediaLooper() {
   const [loopCount, setLoopCount] = useState<number>(0);
   const [settings, setSettings] = useState<LoopSettings>({
     targetDuration: 3600, // 1 hour default
-    outputQuality: 'medium'
+    outputQuality: 'medium',
+    useCustomDuration: false,
+    customHours: 1,
+    customMinutes: 0,
+    customSeconds: 0
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +80,19 @@ export function MediaLooper() {
     return Math.ceil(target / duration);
   }, []);
 
+  // Calculate custom duration in seconds
+  const getCustomDurationInSeconds = useCallback((hours: number, minutes: number, seconds: number): number => {
+    return (hours * 3600) + (minutes * 60) + seconds;
+  }, []);
+
+  // Get effective target duration (preset or custom)
+  const getEffectiveTargetDuration = useCallback((): number => {
+    if (settings.useCustomDuration) {
+      return getCustomDurationInSeconds(settings.customHours, settings.customMinutes, settings.customSeconds);
+    }
+    return settings.targetDuration;
+  }, [settings, getCustomDurationInSeconds]);
+
   // Handle file selection
   const handleFileSelect = async (file: FileInfo) => {
     setSelectedFile(file);
@@ -79,7 +101,8 @@ export function MediaLooper() {
     try {
       const duration = await getFileDuration(file.path);
       setFileDuration(duration);
-      const loops = calculateLoopCount(duration, settings.targetDuration);
+      const effectiveTarget = getEffectiveTargetDuration();
+      const loops = calculateLoopCount(duration, effectiveTarget);
       setLoopCount(loops);
     } catch (error) {
       console.error('Error getting file duration:', error);
@@ -191,14 +214,22 @@ export function MediaLooper() {
   // Update loop count when settings change
   React.useEffect(() => {
     if (fileDuration) {
-      const loops = calculateLoopCount(fileDuration, settings.targetDuration);
+      const effectiveTarget = getEffectiveTargetDuration();
+      const loops = calculateLoopCount(fileDuration, effectiveTarget);
       setLoopCount(loops);
     }
-  }, [fileDuration, settings.targetDuration, calculateLoopCount]);
+  }, [fileDuration, settings, calculateLoopCount, getEffectiveTargetDuration]);
 
   // Handle generation
   const handleGenerate = async () => {
     if (!selectedFile || !fileDuration) return;
+
+    // Validate custom duration
+    const effectiveTarget = getEffectiveTargetDuration();
+    if (effectiveTarget <= 0) {
+      alert('Please set a valid duration greater than 0');
+      return;
+    }
 
     setIsProcessing(true);
     setProgress(0);
@@ -211,10 +242,11 @@ export function MediaLooper() {
       }
 
       // Call loop_media with selected output directory
+      const effectiveTarget = getEffectiveTargetDuration();
       const outputPath = await invoke<string>('loop_media', {
         inputPath: selectedFile.path,
         outputDirectory: outputDirectory, // Use selected directory or empty for same directory as input
-        targetDuration: settings.targetDuration
+        targetDuration: effectiveTarget
       });
 
       // Set the actual output path returned by backend
@@ -331,25 +363,106 @@ export function MediaLooper() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="target-duration">Target Duration</Label>
-              <Select 
-                value={settings.targetDuration.toString()} 
-                onValueChange={(value) => setSettings(prev => ({ ...prev, targetDuration: parseInt(value) }))}
+            {/* Duration Mode Toggle */}
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="custom-duration"
+                checked={settings.useCustomDuration}
+                onCheckedChange={(checked) => 
+                  setSettings(prev => ({ ...prev, useCustomDuration: checked }))
+                }
                 disabled={isProcessing}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {durationOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value.toString()}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
+              <Label htmlFor="custom-duration" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Custom Duration
+              </Label>
             </div>
+
+            {!settings.useCustomDuration ? (
+              <div className="space-y-2">
+                <Label htmlFor="target-duration">Target Duration (Presets)</Label>
+                <Select 
+                  value={settings.targetDuration.toString()} 
+                  onValueChange={(value) => setSettings(prev => ({ ...prev, targetDuration: parseInt(value) }))}
+                  disabled={isProcessing}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {durationOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value.toString()}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Custom Duration</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="custom-hours" className="text-xs">Hours</Label>
+                    <Input
+                      id="custom-hours"
+                      type="text"
+                      value={settings.customHours === 0 ? '' : settings.customHours.toString()}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const num = value === '' ? 0 : parseInt(value);
+                        setSettings(prev => ({ 
+                          ...prev, 
+                          customHours: isNaN(num) ? 0 : Math.max(0, Math.min(99, num))
+                        }));
+                      }}
+                      disabled={isProcessing}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="custom-minutes" className="text-xs">Minutes</Label>
+                    <Input
+                      id="custom-minutes"
+                      type="text"
+                      value={settings.customMinutes === 0 ? '' : settings.customMinutes.toString()}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const num = value === '' ? 0 : parseInt(value);
+                        setSettings(prev => ({ 
+                          ...prev, 
+                          customMinutes: isNaN(num) ? 0 : Math.max(0, Math.min(59, num))
+                        }));
+                      }}
+                      disabled={isProcessing}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="custom-seconds" className="text-xs">Seconds</Label>
+                    <Input
+                      id="custom-seconds"
+                      type="text"
+                      value={settings.customSeconds === 0 ? '' : settings.customSeconds.toString()}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const num = value === '' ? 0 : parseInt(value);
+                        setSettings(prev => ({ 
+                          ...prev, 
+                          customSeconds: isNaN(num) ? 0 : Math.max(0, Math.min(59, num))
+                        }));
+                      }}
+                      disabled={isProcessing}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Total: {formatDuration(getEffectiveTargetDuration())}
+                </p>
+              </div>
+            )}
 
           <div className="space-y-2">
             <Label htmlFor="output-quality">Quality</Label>
@@ -402,16 +515,21 @@ export function MediaLooper() {
           {fileDuration && loopCount > 0 && (
             <Alert>
               <AlertDescription>
-                The file will be looped <strong>{loopCount} times</strong> to reach {formatDuration(settings.targetDuration)} duration.
+                The file will be looped <strong>{loopCount} times</strong> to reach {formatDuration(getEffectiveTargetDuration())} duration.
                 <br />
                 Original duration: {formatDuration(Math.floor(fileDuration))}
+                {settings.useCustomDuration && (
+                  <span className="text-blue-600">
+                    <br />Custom duration: {settings.customHours}h {settings.customMinutes}m {settings.customSeconds}s
+                  </span>
+                )}
               </AlertDescription>
             </Alert>
           )}
 
           <Button 
             onClick={handleGenerate} 
-            disabled={!selectedFile || !fileDuration || isProcessing}
+            disabled={!selectedFile || !fileDuration || isProcessing || getEffectiveTargetDuration() <= 0}
             className="w-full"
           >
             <RotateCcw className="w-4 h-4 mr-2" />
