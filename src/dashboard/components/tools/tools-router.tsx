@@ -12,6 +12,7 @@ import YoutubeSummarize from '@/dashboard/components/youtube-summarize';
 import YouTubeMP3Downloader from '@/dashboard/components/youtube-mp3-downloader';
 import YouTubeMP3V2Downloader from '@/dashboard/components/youtube-mp3-v2-downloader';
 import { RemoveBackgroundAdvanced } from '@/dashboard/components/tools/remove-background-advanced';
+import YtdlpDownloadManager from '@/dashboard/components/ytdlp-download-manager';
 
 interface ToolsRouterProps {
   currentTool: string;
@@ -20,6 +21,10 @@ interface ToolsRouterProps {
 
 export function ToolsRouter({ currentTool, onBack }: ToolsRouterProps) {
   const toolComponents: Record<string, { component: React.ReactNode; title: string }> = {
+    'ytdlp-download-manager': {
+      component: <YtdlpDownloadManager />,
+      title: 'yt-dlp Download Manager'
+    },
     'yt-mp4': {
       component: <YtMp4Downloader />,
       title: 'YT MP4 Downloader'

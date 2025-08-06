@@ -17,6 +17,27 @@ interface ToolsOverviewProps {
 
 export function ToolsOverview({ onToolSelect, category = 'overview' }: ToolsOverviewProps) {
   const tools: Tool[] = [
+    // Universal Download Tools
+    {
+      id: 'ytdlp-download-manager',
+      name: 'yt-dlp Download Manager',
+      title: 'Universal Downloader',
+      description: 'Download videos and audio from 1000+ sites using yt-dlp',
+      category: 'download',
+      icon: (
+        <div className="w-4 h-4 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+          <svg
+            viewBox="0 0 24 24"
+            fill="white"
+            className="w-3 h-3"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7,10 12,15 17,10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </div>
+      )
+    },
     // YouTube Tools Group - berurutan
     {
       id: 'youtube',

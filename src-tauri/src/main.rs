@@ -84,6 +84,42 @@ struct NoiseReductionSettings {
     notch_freq: Option<f32>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct DownloadOptions {
+    url: String,
+    output_dir: String,
+    quality: String,
+    format: String,
+    audio_only: bool,
+    audio_format: String,
+    embed_subs: bool,
+    embed_thumbnail: bool,
+    embed_metadata: bool,
+    retries: u32,
+    cookie_file: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct VideoInfoResponse {
+    title: String,
+    duration: u32,
+    thumbnail: String,
+    uploader: String,
+    formats: Vec<VideoFormat>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct VideoFormat {
+    format_id: String,
+    ext: String,
+    width: Option<u32>,
+    height: Option<u32>,
+    filesize: Option<u64>,
+    vcodec: Option<String>,
+    acodec: Option<String>,
+    format_note: Option<String>,
+}
+
 
 
 
@@ -823,6 +859,344 @@ async fn reduce_noise(settings: NoiseReductionSettings) -> Result<String, String
     Ok(output_path_str)
 }
 
+// yt-dlp related functions
+#[tauri::command]
+async fn ytdlp_get_info(url: String) -> Result<serde_json::Value, String> {
+    // Check if yt-dlp is available
+    let mut check_cmd = create_hidden_command("yt-dlp");
+    check_cmd.arg("--version");
+    
+    match check_cmd.output() {
+        Ok(_) => {},
+        Err(_) => return Err("yt-dlp is not installed or not found in PATH. Please install yt-dlp first.".to_string()),
+    }
+
+    // Get video information
+    let mut cmd = create_hidden_command("yt-dlp");
+    cmd.args(&[
+        "--dump-json",
+        "--no-playlist", // Only get info for single video, not entire playlist
+        &url
+    ]);
+
+    match cmd.output() {
+        Ok(output) => {
+            if output.status.success() {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                match serde_json::from_str::<serde_json::Value>(&output_str) {
+                    Ok(json) => Ok(json),
+                    Err(e) => Err(format!("Failed to parse video info: {}", e)),
+                }
+            } else {
+                let error_str = String::from_utf8_lossy(&output.stderr);
+                Err(format!("yt-dlp error: {}", error_str))
+            }
+        }
+        Err(e) => Err(format!("Failed to execute yt-dlp: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn ytdlp_get_playlist_info(url: String) -> Result<serde_json::Value, String> {
+    // Check if yt-dlp is available
+    let mut check_cmd = create_hidden_command("yt-dlp");
+    check_cmd.arg("--version");
+    
+    match check_cmd.output() {
+        Ok(_) => {},
+        Err(_) => return Err("yt-dlp is not installed or not found in PATH. Please install yt-dlp first.".to_string()),
+    }
+
+    // Get playlist information
+    let mut cmd = create_hidden_command("yt-dlp");
+    cmd.args(&[
+        "--dump-json",
+        "--flat-playlist", // Get playlist entries without downloading
+        "--skip-download", // Don't download, just get info
+        &url
+    ]);
+
+    match cmd.output() {
+        Ok(output) => {
+            if output.status.success() {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                
+                // Parse each line as a separate JSON object (yt-dlp outputs one JSON per line for playlists)
+                let mut playlist_videos = Vec::new();
+                for line in output_str.lines() {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+                        playlist_videos.push(json);
+                    }
+                }
+                
+                // Return as a JSON array
+                Ok(serde_json::json!({
+                    "playlist_count": playlist_videos.len(),
+                    "entries": playlist_videos
+                }))
+            } else {
+                let error_str = String::from_utf8_lossy(&output.stderr);
+                Err(format!("yt-dlp error: {}", error_str))
+            }
+        }
+        Err(e) => Err(format!("Failed to execute yt-dlp: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn ytdlp_get_video_details(video_id: String) -> Result<serde_json::Value, String> {
+    // Check if yt-dlp is available
+    let mut check_cmd = create_hidden_command("yt-dlp");
+    check_cmd.arg("--version");
+    
+    match check_cmd.output() {
+        Ok(_) => {},
+        Err(_) => return Err("yt-dlp is not installed or not found in PATH. Please install yt-dlp first.".to_string()),
+    }
+
+    let video_url = if video_id.starts_with("http") {
+        video_id
+    } else {
+        format!("https://www.youtube.com/watch?v={}", video_id)
+    };
+
+    // Get detailed video information including thumbnails
+    let mut cmd = create_hidden_command("yt-dlp");
+    cmd.args(&[
+        "--dump-json",
+        "--no-playlist",
+        "--skip-download",
+        &video_url
+    ]);
+
+    match cmd.output() {
+        Ok(output) => {
+            if output.status.success() {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                match serde_json::from_str::<serde_json::Value>(&output_str) {
+                    Ok(json) => Ok(json),
+                    Err(e) => Err(format!("Failed to parse video details: {}", e)),
+                }
+            } else {
+                let error_str = String::from_utf8_lossy(&output.stderr);
+                Err(format!("yt-dlp error: {}", error_str))
+            }
+        }
+        Err(e) => Err(format!("Failed to execute yt-dlp: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn ytdlp_download(
+    url: String,
+    output_path: String,
+    format: String,
+    quality: String,
+    audio_only: bool,
+    subtitles: bool,
+    playlist: bool,
+    custom_args: String,
+) -> Result<String, String> {
+    // Check if yt-dlp is available
+    let mut check_cmd = create_hidden_command("yt-dlp");
+    check_cmd.arg("--version");
+    
+    match check_cmd.output() {
+        Ok(_) => {},
+        Err(_) => return Err("yt-dlp is not installed or not found in PATH. Please install yt-dlp first.".to_string()),
+    }
+
+    let mut cmd = create_hidden_command("yt-dlp");
+    
+    // Set output directory
+    let output_template = if audio_only {
+        format!("{}/%(title)s.%(ext)s", output_path)
+    } else {
+        format!("{}/%(title)s.%(ext)s", output_path)
+    };
+    
+    cmd.args(&["-o", &output_template]);
+
+    // Add verbose output for better debugging
+    cmd.arg("--verbose");
+
+    // Audio-only options
+    if audio_only {
+        cmd.args(&["-x", "--audio-format", &format]);
+        
+        // Audio quality
+        match quality.as_str() {
+            "best" => cmd.arg("--audio-quality=0"),
+            "worst" => cmd.arg("--audio-quality=9"),
+            _ => cmd.arg("--audio-quality=0"),
+        };
+    } else {
+        // Video format and quality - check if quality is already a selector or needs mapping
+        let format_selector = if quality.contains("[") || quality.contains("+") || quality == "best" || quality == "worst" {
+            // Quality is already a yt-dlp selector - use it directly (like Python implementation)
+            quality.as_str()
+        } else {
+            // Legacy quality strings - map to selectors
+            match quality.as_str() {
+                "1080p" => "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=1080][vcodec^=avc]",
+                "720p" => "bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=720][vcodec^=avc]",
+                "480p" => "bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=480][vcodec^=avc]",
+                "360p" => "bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=360][vcodec^=avc]",
+                _ => "best",
+            }
+        };
+        
+        cmd.args(&["-f", format_selector]);
+
+        // Use merge-output-format like in the working Python implementation
+        // Extract the actual format from the format label or use mp4 as default
+        let merge_format = if format.to_lowercase().contains("mp4") || format.to_lowercase().contains("video") {
+            "mp4"
+        } else if format.to_lowercase().contains("webm") {
+            "webm"
+        } else if format.to_lowercase().contains("mkv") {
+            "mkv"
+        } else {
+            "mp4" // Default to mp4
+        };
+        cmd.args(&["--merge-output-format", merge_format]);
+    }
+
+    // Subtitle options
+    if subtitles {
+        cmd.args(&["--write-subs", "--write-auto-subs", "--sub-lang", "en,id"]);
+    }
+
+    // Playlist handling
+    if !playlist {
+        cmd.arg("--no-playlist");
+    }
+
+    // Custom arguments
+    if !custom_args.trim().is_empty() {
+        let args: Vec<&str> = custom_args.split_whitespace().collect();
+        cmd.args(&args);
+    }
+
+    // Add URL
+    cmd.arg(&url);
+
+    // Execute command
+    match cmd.output() {
+        Ok(output) => {
+            if output.status.success() {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                Ok(format!("Download completed successfully. Output: {}", output_str))
+            } else {
+                let error_str = String::from_utf8_lossy(&output.stderr);
+                
+                // Check if the error is about format not being available
+                if error_str.contains("Requested format is not available") {
+                    // Try a fallback approach with a more lenient format selector
+                    let mut fallback_cmd = create_hidden_command("yt-dlp");
+                    
+                    fallback_cmd.args(&["-o", &output_template]);
+                    fallback_cmd.args(&[
+                        "--extractor-args", "youtube:player_client=android",
+                        "--verbose", // Keep verbose for debugging
+                    ]);
+                    
+                    if audio_only {
+                        fallback_cmd.args(&["-x", "--audio-format", &format]);
+                        fallback_cmd.arg("--audio-quality=0");
+                    } else {
+                        // Use the same advanced format selectors for fallback - like Python implementation
+                        let fallback_selector = match quality.as_str() {
+                            "1080p" => "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=1080][vcodec^=avc]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+                            "720p" => "bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=720][vcodec^=avc]/bestvideo[height<=720]+bestaudio/best[height<=720]/best", 
+                            "480p" => "bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=480][vcodec^=avc]/bestvideo[height<=480]+bestaudio/best[height<=480]/best",
+                            "360p" => "bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=360][vcodec^=avc]/bestvideo[height<=360]+bestaudio/best[height<=360]/worst",
+                            _ => "best/worst",
+                        };
+                        
+                        fallback_cmd.args(&["-f", fallback_selector]);
+                        
+                        // Always use merge-output-format for consistency
+                        fallback_cmd.args(&["--merge-output-format", &format]);
+                    }
+                    
+                    if subtitles {
+                        fallback_cmd.args(&["--write-subs", "--write-auto-subs", "--sub-lang", "en,id"]);
+                    }
+                    
+                    if !playlist {
+                        fallback_cmd.arg("--no-playlist");
+                    }
+                    
+                    if !custom_args.trim().is_empty() {
+                        let args: Vec<&str> = custom_args.split_whitespace().collect();
+                        fallback_cmd.args(&args);
+                    }
+                    
+                    fallback_cmd.arg(&url);
+                    
+                    // Try the fallback
+                    match fallback_cmd.output() {
+                        Ok(fallback_output) => {
+                            if fallback_output.status.success() {
+                                let output_str = String::from_utf8_lossy(&fallback_output.stdout);
+                                Ok(format!("Download completed with fallback format. Output: {}", output_str))
+                            } else {
+                                let fallback_error = String::from_utf8_lossy(&fallback_output.stderr);
+                                Err(format!("yt-dlp download failed even with fallback: Original error: {}\nFallback error: {}", error_str, fallback_error))
+                            }
+                        }
+                        Err(e) => Err(format!("yt-dlp download failed: {}\nFallback execution failed: {}", error_str, e)),
+                    }
+                } else {
+                    Err(format!("yt-dlp download failed: {}", error_str))
+                }
+            }
+        }
+        Err(e) => Err(format!("Failed to execute yt-dlp: {}", e)),
+    }
+}
+
+#[tauri::command]
+async fn check_ytdlp() -> Result<String, String> {
+    let mut cmd = create_hidden_command("yt-dlp");
+    cmd.arg("--version");
+    
+    match cmd.output() {
+        Ok(output) => {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                Ok(version.trim().to_string())
+            } else {
+                Err("yt-dlp is installed but not working properly".to_string())
+            }
+        }
+        Err(_) => Err("yt-dlp is not installed or not found in PATH".to_string()),
+    }
+}
+
+#[tauri::command]
+async fn ytdlp_list_formats(url: String) -> Result<String, String> {
+    let mut cmd = create_hidden_command("yt-dlp");
+    cmd.args(&[
+        "-F", // List all available formats
+        "--extractor-args", "youtube:player_client=android",
+        &url
+    ]);
+
+    match cmd.output() {
+        Ok(output) => {
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                let error_str = String::from_utf8_lossy(&output.stderr);
+                Err(format!("Failed to list formats: {}", error_str))
+            }
+        }
+        Err(e) => Err(format!("Failed to execute yt-dlp: {}", e)),
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -841,7 +1215,13 @@ fn main() {
             resize_video,
             convert_video,
             convert_audio,
-            reduce_noise
+            reduce_noise,
+            ytdlp_get_info,
+            ytdlp_get_playlist_info,
+            ytdlp_get_video_details,
+            ytdlp_download,
+            ytdlp_list_formats,
+            check_ytdlp
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
