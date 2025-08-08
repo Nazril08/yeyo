@@ -9,6 +9,7 @@ use std::io::copy;
 use std::path::Path;
 use std::time::SystemTime;
 use std::process::Command;
+use std::collections::HashMap;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use tauri::Window;
@@ -120,7 +121,23 @@ struct VideoFormat {
     format_note: Option<String>,
 }
 
-
+#[derive(Debug, Serialize, Deserialize)]
+struct AvailableFormat {
+    #[serde(rename = "formatId")]
+    format_id: String,
+    quality: String,
+    #[serde(rename = "displayName")]
+    display_name: String,
+    resolution: Option<String>,
+    #[serde(rename = "fileSize")]
+    file_size: Option<String>,
+    ext: String,
+    fps: Option<f32>,
+    #[serde(rename = "vcodec")]
+    video_codec: Option<String>,
+    #[serde(rename = "acodec")]
+    audio_codec: Option<String>,
+}
 
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
@@ -986,6 +1003,208 @@ async fn ytdlp_get_video_details(video_id: String) -> Result<serde_json::Value, 
     }
 }
 
+// Helper function to convert bytes to human readable format
+fn human_size(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut unit_index = 0;
+    
+    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit_index += 1;
+    }
+    
+    if unit_index == 0 {
+        format!("{} {}", bytes, UNITS[unit_index])
+    } else {
+        format!("{:.1} {}", size, UNITS[unit_index])
+    }
+}
+
+#[tauri::command]
+async fn ytdlp_list_formats(url: String) -> Result<Vec<AvailableFormat>, String> {
+    // Check if yt-dlp is available
+    let mut check_cmd = create_hidden_command("yt-dlp");
+    check_cmd.arg("--version");
+    
+    match check_cmd.output() {
+        Ok(_) => {},
+        Err(_) => return Err("yt-dlp is not installed or not found in PATH. Please install yt-dlp first.".to_string()),
+    }
+
+    let mut cmd = create_hidden_command("yt-dlp");
+    cmd.args(&[
+        "--dump-json",
+        "--no-playlist",
+        &url
+    ]);
+
+    match cmd.output() {
+        Ok(output) => {
+            if output.status.success() {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                
+                // Parse JSON output
+                let mut formats = Vec::new();
+                
+                for line in output_str.lines() {
+                    if let Ok(json_data) = serde_json::from_str::<serde_json::Value>(line) {
+                        if let Some(json_formats) = json_data["formats"].as_array() {
+                            for format in json_formats {
+                                let format_id = format["format_id"].as_str().unwrap_or("").to_string();
+                                let ext = format["ext"].as_str().unwrap_or("").to_string();
+                                let width = format["width"].as_u64().map(|w| w as u32);
+                                let height = format["height"].as_u64().map(|h| h as u32);
+                                let filesize = format["filesize"].as_u64();
+                                let fps = format["fps"].as_f64().map(|f| f as f32);
+                                let vcodec = format["vcodec"].as_str().map(|s| s.to_string());
+                                let acodec = format["acodec"].as_str().map(|s| s.to_string());
+                                let format_note = format["format_note"].as_str().map(|s| s.to_string());
+                                
+                                // Skip storyboard and subtitle formats
+                                if format_id.contains("sb") || ext == "mhtml" || ext == "vtt" || ext == "ttml" {
+                                    continue;
+                                }
+                                
+                                // Only include video formats with valid video codec
+                                if let Some(ref vc) = vcodec {
+                                    if vc == "none" || vc == "audio only" {
+                                        continue;
+                                    }
+                                }
+                                
+                                // Only include formats with both width and height
+                                if width.is_none() || height.is_none() {
+                                    continue;
+                                }
+                                
+                                // Create display name and quality string
+                                let quality = if let (Some(_w), Some(h)) = (width, height) {
+                                    match h {
+                                        h if h >= 2000 => "2160p".to_string(),
+                                        h if h >= 1400 => "1440p".to_string(), 
+                                        h if h >= 1000 => "1080p".to_string(),
+                                        h if h >= 700 => "720p".to_string(),
+                                        h if h >= 450 => "480p".to_string(),
+                                        h if h >= 300 => "360p".to_string(),
+                                        h if h >= 200 => "240p".to_string(),
+                                        _ => format!("{}p", h),
+                                    }
+                                } else {
+                                    continue;
+                                };
+                                
+                                let resolution = if let (Some(w), Some(h)) = (width, height) {
+                                    Some(format!("{}x{}", w, h))
+                                } else {
+                                    None
+                                };
+                                
+                                let file_size = filesize.map(|size| human_size(size));
+                                
+                                let codec_info = match (&vcodec, &acodec) {
+                                    (Some(v), Some(a)) => {
+                                        let v_short = if v.starts_with("avc1") { "H.264" } 
+                                                     else if v.starts_with("vp9") { "VP9" } 
+                                                     else if v.starts_with("av01") { "AV1" } 
+                                                     else { v };
+                                        let a_short = if a.starts_with("mp4a") { "AAC" } 
+                                                     else if a.starts_with("opus") { "Opus" } 
+                                                     else { a };
+                                        format!(" ({}+{})", v_short, a_short)
+                                    },
+                                    (Some(v), None) => {
+                                        let v_short = if v.starts_with("avc1") { "H.264" } 
+                                                     else if v.starts_with("vp9") { "VP9" } 
+                                                     else if v.starts_with("av01") { "AV1" } 
+                                                     else { v };
+                                        format!(" ({})", v_short)
+                                    },
+                                    (None, Some(a)) => {
+                                        let a_short = if a.starts_with("mp4a") { "AAC" } 
+                                                     else if a.starts_with("opus") { "Opus" } 
+                                                     else { a };
+                                        format!(" ({})", a_short)
+                                    },
+                                    (None, None) => String::new(),
+                                };
+                                
+                                let fps_info = fps.map(|f| {
+                                    if f > 30.0 { format!(" {}fps", f as i32) } else { String::new() }
+                                }).unwrap_or_default();
+                                
+                                let size_info = file_size.as_ref().map(|s| format!(" [{}]", s)).unwrap_or_default();
+                                
+                                let display_name = if let Some(ref res) = resolution {
+                                    format!("{}{}{}{}", res, codec_info, fps_info, size_info)
+                                } else {
+                                    continue;
+                                };
+                                
+                                let available_format = AvailableFormat {
+                                    format_id,
+                                    quality,
+                                    display_name,
+                                    resolution,
+                                    file_size,
+                                    ext,
+                                    fps,
+                                    video_codec: vcodec,
+                                    audio_codec: acodec,
+                                };
+                                
+                                formats.push(available_format);
+                            }
+                        }
+                    }
+                }
+                
+                // Remove duplicates by quality and keep the best codec
+                let mut unique_formats: HashMap<String, AvailableFormat> = HashMap::new();
+                
+                for format in formats {
+                    let key = format.quality.clone();
+                    
+                    if let Some(existing) = unique_formats.get(&key) {
+                        // Prefer H.264 over other codecs for compatibility, then by file size
+                        let should_replace = if let (Some(ref new_codec), Some(ref existing_codec)) = (&format.video_codec, &existing.video_codec) {
+                            new_codec.starts_with("avc1") && !existing_codec.starts_with("avc1")
+                        } else {
+                            false
+                        };
+                        
+                        if should_replace {
+                            unique_formats.insert(key, format);
+                        }
+                    } else {
+                        unique_formats.insert(key, format);
+                    }
+                }
+                
+                // Convert back to Vec and sort by quality (height) descending
+                let mut result_formats: Vec<AvailableFormat> = unique_formats.into_values().collect();
+                result_formats.sort_by(|a, b| {
+                    let a_height = a.resolution.as_ref()
+                        .and_then(|r| r.split('x').nth(1))
+                        .and_then(|h| h.parse::<u32>().ok())
+                        .unwrap_or(0);
+                    let b_height = b.resolution.as_ref()
+                        .and_then(|r| r.split('x').nth(1))
+                        .and_then(|h| h.parse::<u32>().ok())
+                        .unwrap_or(0);
+                    b_height.cmp(&a_height)
+                });
+                
+                Ok(result_formats)
+            } else {
+                let error_str = String::from_utf8_lossy(&output.stderr);
+                Err(format!("yt-dlp error: {}", error_str))
+            }
+        }
+        Err(e) => Err(format!("Failed to execute yt-dlp: {}", e)),
+    }
+}
+
 #[tauri::command]
 async fn ytdlp_download(
     url: String,
@@ -1017,6 +1236,9 @@ async fn ytdlp_download(
     
     cmd.args(&["-o", &output_template]);
 
+    // Remove problematic extractor args that cause GVS PO Token issues with 1080p+
+    // cmd.args(&["--extractor-args", "youtube:player_client=android,web;formats=missing_pot"]);
+
     // Add verbose output for better debugging
     cmd.arg("--verbose");
 
@@ -1031,17 +1253,43 @@ async fn ytdlp_download(
             _ => cmd.arg("--audio-quality=0"),
         };
     } else {
-        // Video format and quality - check if quality is already a selector or needs mapping
-        let format_selector = if quality.contains("[") || quality.contains("+") || quality == "best" || quality == "worst" {
-            // Quality is already a yt-dlp selector - use it directly (like Python implementation)
+        // Video format and quality - First try to use specific format if it looks like format ID
+        let format_selector = if quality.contains("+") {
+            // Quality is already a format combination like "401+140"
             quality.as_str()
+        } else if quality.contains("[") || quality == "best" || quality == "worst" {
+            // Quality is already a yt-dlp selector - use it directly
+            quality.as_str()
+        } else if quality.contains("x") && quality.parse::<u32>().is_err() {
+            // Quality is a resolution like "1280x640" or "3840x1920"
+            let parts: Vec<&str> = quality.split('x').collect();
+            if parts.len() == 2 {
+                if let (Ok(_width), Ok(height)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                    // Convert resolution to quality selector
+                    match height {
+                        h if h >= 2000 => "bestvideo[height<=2160][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+                        h if h >= 1400 => "bestvideo[height<=1440][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1440]+bestaudio/best[height<=1440]",
+                        h if h >= 1000 => "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+                        h if h >= 700 => "bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=720]+bestaudio/best[height<=720]",
+                        h if h >= 450 => "bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=480]+bestaudio/best[height<=480]",
+                        _ => "bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=360]+bestaudio/best[height<=360]",
+                    }
+                } else {
+                    "best"
+                }
+            } else {
+                "best"
+            }
         } else {
-            // Legacy quality strings - map to selectors
+            // Legacy quality strings - use format selectors that work reliably
             match quality.as_str() {
-                "1080p" => "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=1080][vcodec^=avc]",
-                "720p" => "bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=720][vcodec^=avc]",
-                "480p" => "bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=480][vcodec^=avc]",
-                "360p" => "bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=360][vcodec^=avc]",
+                "2160p" | "4K" => "bestvideo[height<=2160][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+                "1440p" | "2K" => "bestvideo[height<=1440][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1440]+bestaudio/best[height<=1440]", 
+                "1080p" => "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+                "720p" => "bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=720]+bestaudio/best[height<=720]",
+                "480p" => "bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=480]+bestaudio/best[height<=480]",
+                "360p" => "bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=360]+bestaudio/best[height<=360]",
+                "240p" => "bestvideo[height<=240][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=240]+bestaudio/best[height<=240]",
                 _ => "best",
             }
         };
@@ -1090,34 +1338,36 @@ async fn ytdlp_download(
             } else {
                 let error_str = String::from_utf8_lossy(&output.stderr);
                 
-                // Check if the error is about format not being available
-                if error_str.contains("Requested format is not available") {
-                    // Try a fallback approach with a more lenient format selector
+                // Check if the error is about format not being available or HTTP 403
+                if error_str.contains("Requested format is not available") || error_str.contains("HTTP Error 403") || error_str.contains("unable to download") {
+                    // Try a fallback approach without extractor args 
                     let mut fallback_cmd = create_hidden_command("yt-dlp");
                     
                     fallback_cmd.args(&["-o", &output_template]);
-                    fallback_cmd.args(&[
-                        "--extractor-args", "youtube:player_client=android",
-                        "--verbose", // Keep verbose for debugging
-                    ]);
+                    // Don't use extractor args in fallback to avoid GVS PO Token issues
+                    // fallback_cmd.args(&["--extractor-args", "youtube:player_client=android,web;formats=missing_pot"]);
+                    fallback_cmd.arg("--verbose"); // Keep verbose for debugging
                     
                     if audio_only {
                         fallback_cmd.args(&["-x", "--audio-format", &format]);
                         fallback_cmd.arg("--audio-quality=0");
                     } else {
-                        // Use the same advanced format selectors for fallback - like Python implementation
+                        // Use working fallback format selectors without height>=
                         let fallback_selector = match quality.as_str() {
-                            "1080p" => "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=1080][vcodec^=avc]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-                            "720p" => "bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=720][vcodec^=avc]/bestvideo[height<=720]+bestaudio/best[height<=720]/best", 
-                            "480p" => "bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=480][vcodec^=avc]/bestvideo[height<=480]+bestaudio/best[height<=480]/best",
-                            "360p" => "bestvideo[height<=360][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=360][vcodec^=avc]/bestvideo[height<=360]+bestaudio/best[height<=360]/worst",
-                            _ => "best/worst",
+                            "2160p" | "4K" => "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+                            "1440p" | "2K" => "bestvideo[height<=1440]+bestaudio/best[height<=1440]",
+                            "1080p" => "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+                            "720p" => "bestvideo[height<=720]+bestaudio/best[height<=720]", 
+                            "480p" => "bestvideo[height<=480]+bestaudio/best[height<=480]",
+                            "360p" => "bestvideo[height<=360]+bestaudio/best[height<=360]",
+                            "240p" => "worst",
+                            _ => "best",
                         };
                         
                         fallback_cmd.args(&["-f", fallback_selector]);
                         
-                        // Always use merge-output-format for consistency
-                        fallback_cmd.args(&["--merge-output-format", &format]);
+                        // Use mp4 as default merge format for compatibility
+                        fallback_cmd.args(&["--merge-output-format", "mp4"]);
                     }
                     
                     if subtitles {
@@ -1175,28 +1425,6 @@ async fn check_ytdlp() -> Result<String, String> {
     }
 }
 
-#[tauri::command]
-async fn ytdlp_list_formats(url: String) -> Result<String, String> {
-    let mut cmd = create_hidden_command("yt-dlp");
-    cmd.args(&[
-        "-F", // List all available formats
-        "--extractor-args", "youtube:player_client=android",
-        &url
-    ]);
-
-    match cmd.output() {
-        Ok(output) => {
-            if output.status.success() {
-                Ok(String::from_utf8_lossy(&output.stdout).to_string())
-            } else {
-                let error_str = String::from_utf8_lossy(&output.stderr);
-                Err(format!("Failed to list formats: {}", error_str))
-            }
-        }
-        Err(e) => Err(format!("Failed to execute yt-dlp: {}", e)),
-    }
-}
-
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -1219,8 +1447,8 @@ fn main() {
             ytdlp_get_info,
             ytdlp_get_playlist_info,
             ytdlp_get_video_details,
-            ytdlp_download,
             ytdlp_list_formats,
+            ytdlp_download,
             check_ytdlp
         ])
         .run(tauri::generate_context!())

@@ -252,3 +252,7 @@ bundle-analyzer-report.html
 
 # Generated files
 *.generated.*
+
+# Test downloads (should not be committed)
+test_download/
+src-tauri/test_download/
