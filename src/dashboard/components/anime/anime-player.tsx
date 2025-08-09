@@ -66,6 +66,9 @@ export default function AnimePlayer({ episodeId, onBack }: AnimePlayerProps) {
   const [error, setError] = useState<string | null>(null);
   const [currentStreamUrl, setCurrentStreamUrl] = useState<string>('');
   const [selectedServer, setSelectedServer] = useState<string>('');
+  const [iframeKey, setIframeKey] = useState<string>(Date.now().toString()); // Use string for better uniqueness
+  const [isLoadingServer, setIsLoadingServer] = useState<boolean>(false);
+  const [showIframe, setShowIframe] = useState<boolean>(true); // Control iframe visibility
   
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -84,8 +87,16 @@ export default function AnimePlayer({ episodeId, onBack }: AnimePlayerProps) {
       }
 
       const result = await response.json();
+      console.log('📺 Episode data loaded:', result.data);
+      console.log('🎬 Available qualities:', result.data.server?.qualities?.map((q: any) => q.title));
       setData(result.data);
-      setCurrentStreamUrl(result.data.defaultStreamingUrl);
+      
+      // Set initial stream URL and reset iframe key
+      if (result.data.defaultStreamingUrl) {
+        console.log('🎬 Setting default stream URL:', result.data.defaultStreamingUrl);
+        setCurrentStreamUrl(result.data.defaultStreamingUrl);
+        setIframeKey(Date.now().toString()); // Reset iframe key for initial load
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -95,17 +106,67 @@ export default function AnimePlayer({ episodeId, onBack }: AnimePlayerProps) {
 
   const handleServerSelect = async (serverId: string, serverTitle: string) => {
     try {
+      setIsLoadingServer(true);
       setSelectedServer(serverTitle);
+      console.log('🔄 Switching to server:', serverTitle, 'ID:', serverId);
+      
+      // Hide iframe first to force unmount
+      setShowIframe(false);
+      
       const response = await fetch(`https://api.bellonime.web.id/otakudesu/server/${serverId}`);
       
       if (response.ok) {
         const result = await response.json();
+        console.log('✅ Server response received:', result);
+        
         if (result.data?.streamingUrl) {
-          setCurrentStreamUrl(result.data.streamingUrl);
+          const newUrl = result.data.streamingUrl;
+          console.log('🎬 New streaming URL:', newUrl);
+          console.log('🔄 Old URL was:', currentStreamUrl);
+          
+          // Update URL and key, then show iframe again
+          setCurrentStreamUrl(newUrl);
+          setIframeKey(Date.now().toString() + '-' + Math.random().toString(36));
+          
+          // Wait a moment before showing iframe again
+          setTimeout(() => {
+            setShowIframe(true);
+          }, 100);
+          
+          console.log('🔑 New iframe key generated');
+          
+          toast({
+            title: "Server Changed",
+            description: `Switched to ${serverTitle}`,
+          });
+        } else {
+          console.error('❌ No streaming URL in response:', result);
+          setShowIframe(true); // Show iframe back if error
+          toast({
+            title: "Server Error",
+            description: "Failed to get streaming URL from server",
+            variant: "destructive",
+          });
         }
+      } else {
+        console.error('❌ Server request failed with status:', response.status);
+        setShowIframe(true); // Show iframe back if error
+        toast({
+          title: "Server Error", 
+          description: "Failed to fetch server data",
+          variant: "destructive",
+        });
       }
     } catch (err) {
-      console.error('Failed to fetch server URL:', err);
+      console.error('❌ Network error:', err);
+      setShowIframe(true); // Show iframe back if error
+      toast({
+        title: "Network Error",
+        description: "Failed to connect to server",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingServer(false);
     }
   };
 
@@ -199,14 +260,23 @@ export default function AnimePlayer({ episodeId, onBack }: AnimePlayerProps) {
             ref={videoContainerRef}
             className="relative aspect-video bg-black rounded-lg overflow-hidden max-w-3xl mx-auto"
           >
-            {currentStreamUrl ? (
+            {currentStreamUrl && showIframe ? (
               <iframe
+                key={iframeKey} // Use string key for uniqueness
                 src={currentStreamUrl}
                 className="w-full h-full"
                 allowFullScreen
                 allow="autoplay; encrypted-media"
                 title={data?.title}
+                onLoad={() => console.log('🎬 Iframe loaded with URL:', currentStreamUrl)}
               />
+            ) : currentStreamUrl && !showIframe ? (
+              <div className="w-full h-full flex items-center justify-center text-white">
+                <div className="text-center">
+                  <MonitorPlay className="h-16 w-16 mx-auto mb-4 opacity-50 animate-pulse" />
+                  <p>Loading new server...</p>
+                </div>
+              </div>
             ) : (
               <div className="w-full h-full flex items-center justify-center text-white">
                 <div className="text-center">
@@ -255,7 +325,7 @@ export default function AnimePlayer({ episodeId, onBack }: AnimePlayerProps) {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue={data.server.qualities[0]?.title || '480p'} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className={`grid w-full ${data.server.qualities.length <= 3 ? 'grid-cols-3' : data.server.qualities.length === 4 ? 'grid-cols-4' : 'grid-cols-5'}`}>
                 {data.server.qualities.map((quality) => (
                   <TabsTrigger key={quality.title} value={quality.title}>
                     {quality.title}
@@ -265,20 +335,31 @@ export default function AnimePlayer({ episodeId, onBack }: AnimePlayerProps) {
               
               {data.server.qualities.map((quality) => (
                 <TabsContent key={quality.title} value={quality.title} className="space-y-2 mt-4">
-                  {quality.serverList.map((server) => (
-                    <Button
-                      key={server.serverId}
-                      variant="outline"
-                      className="w-full justify-start"
-                      onClick={() => handleServerSelect(server.serverId, `${server.title} (${quality.title})`)}
-                    >
-                      <Play className="h-4 w-4 mr-2" />
-                      {server.title}
-                      <Badge variant="secondary" className="ml-auto">
-                        {quality.title}
-                      </Badge>
-                    </Button>
-                  ))}
+                  {quality.serverList.map((server) => {
+                    const isSelected = selectedServer === `${server.title} (${quality.title})`;
+                    const isCurrentlyLoading = isLoadingServer && isSelected;
+                    
+                    return (
+                      <Button
+                        key={server.serverId}
+                        variant={isSelected ? "default" : "outline"}
+                        className="w-full justify-start"
+                        onClick={() => handleServerSelect(server.serverId, `${server.title} (${quality.title})`)}
+                        disabled={isLoadingServer}
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        {server.title}
+                        <Badge variant={isSelected ? "secondary" : "secondary"} className="ml-auto">
+                          {quality.title}
+                        </Badge>
+                        {isCurrentlyLoading ? (
+                          <span className="ml-2 text-xs">• Loading...</span>
+                        ) : isSelected ? (
+                          <span className="ml-2 text-xs">• Playing</span>
+                        ) : null}
+                      </Button>
+                    );
+                  })}
                 </TabsContent>
               ))}
             </Tabs>
