@@ -7,6 +7,56 @@
   src: url("../assets/Inter-VariableFont_slnt,wght.ttf") format("truetype");
 }
 
+/* Video player fullscreen styles - matching video-player.tsx */
+.video-player-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: black !important;
+}
+
+.video-player-fullscreen iframe,
+.video-player-fullscreen video {
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+}
+
+/* Hide scrollbars in fullscreen */
+.video-player-fullscreen::-webkit-scrollbar {
+  display: none;
+}
+
+.video-player-fullscreen {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Legacy fullscreen styles for backward compatibility */
+.fullscreen-container {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  border-radius: 0 !important;
+  aspect-ratio: auto !important;
+}
+
+.fullscreen-container iframe {
+  width: 100vw !important;
+  height: 100vh !important;
+}
+
+.fullscreen-container::-webkit-scrollbar {
+  display: none;
+}
+
+.fullscreen-container {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

@@ -27,11 +27,21 @@ export function DashboardCards({ onNavigate }: DashboardCardsProps) {
       action: () => onNavigate('tools')
     },
     {
+      id: 'anime-streaming',
+      title: 'Anime Streaming',
+      description: 'Watch anime with multiple quality options',
+      icon: Play,
+      gradient: 'from-purple-500 to-pink-500',
+      stats: 'HD Quality',
+      features: ['Latest Episodes', 'Multiple Servers', 'HD Streaming', 'Subtitle Support'],
+      action: () => onNavigate('anime-streaming')
+    },
+    {
       id: 'media-player',
       title: 'Media Player',
       description: 'Play and manage your audio and video files',
-      icon: Play,
-      gradient: 'from-purple-500 to-pink-500',
+      icon: Video,
+      gradient: 'from-green-500 to-teal-500',
       stats: 'Multi-format',
       features: ['Video Player', 'Audio Player', 'Playlist Management', 'Media Library'],
       action: () => onNavigate('media-player')

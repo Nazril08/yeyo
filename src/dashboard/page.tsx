@@ -9,6 +9,7 @@ import { ToolsLayout } from "@/dashboard/components/tools"
 import { MediaPlayer } from "@/dashboard/components/media-player"
 import { FFmpegLayout } from "@/dashboard/components/ffmpeg/ffmpeg-layout"
 import { DashboardCards } from "@/dashboard/components/dashboard-cards"
+import AnimeLayout from "@/dashboard/components/anime/anime-layout"
 import { ArrowLeft } from "lucide-react"
 
 export default function DashboardPage() {
@@ -85,6 +86,10 @@ export default function DashboardPage() {
 
           {currentPage === "tools" && (
             <ToolsLayout />
+          )}
+
+          {currentPage === "anime-streaming" && (
+            <AnimeLayout onBack={handleBackToDashboard} />
           )}
 
           {currentPage === "media-player" && (
